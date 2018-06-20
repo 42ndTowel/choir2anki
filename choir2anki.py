@@ -161,18 +161,17 @@ def count_singable_notes(lilypond_notes, open_parantheses=0):
     tokens = lilypond_notes.split()
 
     singable_notes = 0
-    ignore_next = False
+    next_is_tie = False
     for t in tokens:
-        if t.endswith(')'):
+        if t.endswith(')'): # Although that note is included in the portamento, the lyrics "__" needs to be accounted for
             open_parantheses -= 1
-        if ignore_next:
-            ignore_next = t.endswith('~') # There might be consecutive ties
-            continue
+        if next_is_tie:
+            next_is_tie = t.endswith('~') # There might be consecutive ties
+            continue # ties are sung as one note
         if t.endswith('~'):
-            ignore_next = True
-        if open_parantheses == 0:
-            if not t.startswith('r'):
-                singable_notes += 1
+            next_is_tie = True
+        if open_parantheses == 0 and not t.startswith('r'):
+            singable_notes += 1
         if t.endswith('('):
             open_parantheses += 1
     return singable_notes
