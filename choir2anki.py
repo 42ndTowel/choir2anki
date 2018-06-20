@@ -9,6 +9,7 @@ png_template_file_name = "png_template"
 tmp_folder = "OUTPUT__TMP"
 media_folder = "collection.media"
 
+import re
 import os
 import shutil
 import subprocess
@@ -126,6 +127,20 @@ def fill_template_png(notes,
         out_file.write(out_file_content)
     return out_file_name
 
+def extract_information_from_source(source_file_name, voice='bass'):
+    '''Given a lilypond file in Physikerchor format, extract the relevant metadata, notes and lyrics'''
+    with open(source_file_name) as input_file:
+        input_string = input_file.read()
+    # regexes ahead. If anything brakes, good luck!
+    songtitle = re.search("\\\\header(?:[\s]*){(?:[.|\s]*)title = \"(.*)\"", input_string)[1].strip()
+    global_options = re.search("global = {([^}]*)}", input_string)[1].replace('\n', ' ').strip()
+    tempo = re.search("\\\\midi(?:[\s]*){(?:[.|\s]*)\\\\tempo ([^}]*)}", input_string)[1].strip()
+    lyrics = re.search(voice + "Verse = \\\\lyricmode {([^}]*)}", input_string)[1].replace('\n', ' ').strip()
+    rel_and_notes = re.search(voice + " = \\\\relative ([^={]*) {([^}]*)}", input_string)
+    relative = rel_and_notes[1]
+    notes = rel_and_notes[2].replace('\n', ' ').replace('\\global', '').strip()
+    return songtitle, global_options, relative, tempo, notes, lyrics, voice
+
 def create_normal_lyrics(lilypond_lyrics):
     '''Form normal words from lilypond-tokenized lyrics.'''
     tokens = lilypond_lyrics.split()
@@ -220,6 +235,7 @@ class ChoirNote(genanki.Note):
                         ''',
               'afmt': '''{{FrontSide}}
                         <hr id="answer">
+                        {{answr_lyrics}}
                         <span style="display:none">[sound:{{answr_mp3}}]</span>
                         ''',
             },
@@ -238,45 +254,30 @@ class ChoirNote(genanki.Note):
     def guid(self):
         return genanki.guid_for(self.fields[1], self.fields[2]) # Don't hash random strings, only identifier: songtitle & part_number
 
-def main():
-    '''Run the thing.
-
-    TODO: Incorporate docopt to parse commandline options (but I'm far from that right now).
-    '''
+def main(source_file_name):
+    '''Run the thing.'''
+    songtitle, global_options, relative, tempo, notes, lyrics, voice = extract_information_from_source(source_file_name)
+    tags = [songtitle, voice, 'physikerchor']
+    tags = [x.lower().replace(' ', '_') for x in tags]
     clef = "bass"
-    tempo = "4=100"
-    global_options = "\\key g \\major \\time 4/4"
     '''
     How to get here (more) automatically:
     Put the duration suffix after each note to make it context-free
     Keep track of octave and put after each note to make it context-free
         - replace \\relative with \\absolute
-    Count syllables to get lyric_shards automatically
     '''
-    partials = [4, 1, 4, 1, 1]
-    note_shards = [
-            "g4 e4 e8 g d d e fis g4 fis e r r1",
-            "g4( a fis d g4 fis) e",
-            "r8 d e g g a b a g fis g g fis fis e4. r8",
-            "e2( fis)",
-            "r8 g fis d e e16 e~ e8 r",
-            ]
-    lyrics = "Our whole u -- ni -- verse was in a hot, dense state ah __ wait! the earth be -- gan to cool the au -- to -- trophs be -- gan to drool ah __ we built the py -- ra -- mids"
+    partials = [4, 1, 4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, ]
+    split_symbol = '%%'
+    note_shards = notes.split(split_symbol)
 
-    anki_deck = genanki.Deck(1452737122, 'Physikerchor') # random but hardcoded
+    anki_deck = genanki.Deck(1452737122, 'Physikerchor') # random but hardcoded id to allow updates
     anki_media = []
 
-    # The first anki note is a special case, since we need to ask the question “How does song X start?”
-    # Because of that, the extra field 'songtitle' gets supplied with the title and the note deals with that
+    is_first_part = 'True'
     qustn_png_id = ''
     qustn_png_no_lyrics_id = ''
     qustn_lyrics = ''
     qustn_mp3_id = ''
-
-    songtitle = "Big Bang Theory Theme"
-    is_first_part = 'True'
-    tags = ['big_bang_theory', 'physikerchor']
-
     num_seen_singable_notes = 0
     for shard_num in range(len(note_shards)):
         # First up, generate the 'answr' shard, which will be the answer…
@@ -331,4 +332,4 @@ def main():
     anki_package.write_to_file('big_bang.apkg')
 
 if __name__ == "__main__":
-    main()
+    main('big_bang_theory_theme.ly')
