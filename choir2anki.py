@@ -16,7 +16,7 @@ import uuid
 import genanki
 from string import Template
 
-def create_mp3( source_file_name, mp3_name=None, remove_source=False ):
+def create_mp3(source_file_name, mp3_name=None, remove_source=False):
     """Generate an .mp3 and write it to disk.
 
     Given the file name of a (valid) lilypond file, write an .mp3 to the
@@ -51,7 +51,7 @@ def create_mp3( source_file_name, mp3_name=None, remove_source=False ):
 
     return mp3_name + ".mp3"
 
-def create_png( source_file_name, png_name=None, tmp_folder=tmp_folder, remove_source=False ):
+def create_png(source_file_name, png_name=None, tmp_folder=tmp_folder, remove_source=False):
     """Typeset music and write to disk as .png.
 
     Given the file name of a (valid) lilypond file, typeset the music on a
@@ -90,7 +90,11 @@ def create_png( source_file_name, png_name=None, tmp_folder=tmp_folder, remove_s
 
     return png_name + ".png"
 
-def fill_template_mp3( notes, out_file_name="filled_mp3_template", global_options="", tempo='4=100', template_file_name=mp3_template_file_name ):
+def fill_template_mp3(notes,
+                      out_file_name="filled_mp3_template",
+                      global_options="",
+                      tempo='4=100',
+                      template_file_name=mp3_template_file_name):
     """Given a template, fill it with the approriate options."""
     options = {}
     options["notes"] = notes
@@ -103,7 +107,12 @@ def fill_template_mp3( notes, out_file_name="filled_mp3_template", global_option
         out_file.write(out_file_content)
     return out_file_name
 
-def fill_template_png( notes, out_file_name="filled_png_template", lyrics="", global_options="", clef="bass", template_file_name=png_template_file_name ):
+def fill_template_png(notes,
+                      out_file_name="filled_png_template",
+                      lyrics="",
+                      global_options="",
+                      clef="bass",
+                      template_file_name=png_template_file_name):
     """Given a template, fill it with the approriate options."""
     options = {}
     options["clef"] = clef
@@ -116,6 +125,26 @@ def fill_template_png( notes, out_file_name="filled_png_template", lyrics="", gl
         out_file_content = template.substitute(options)
         out_file.write(out_file_content)
     return out_file_name
+
+def create_normal_lyrics( lilypond_lyrics ):
+    '''Forms normal words from lilypond-tokenized lyrics.'''
+    tokens = lilypond_lyrics.split()
+    words = []
+
+    join_next = False
+    for t in tokens:
+        if t == "__":
+            continue
+        if t == "--":
+            join_next = True
+        elif join_next:
+            words[-1] += t
+            join_next = False
+        else:
+            words += [t]
+
+    return " ".join(words)
+
 
 class ChoirNote(genanki.Note):
     def choir_model():
@@ -179,7 +208,7 @@ class ChoirNote(genanki.Note):
     def guid(self):
         return genanki.guid_for(self.fields[1], self.fields[2]) # Don't hash random strings, only identifier: songtitle & part_number
 
-if __name__ == "__main__":
+def main():
     '''Run the thing.
 
     TODO: Incorporate docopt to parse commandline options (but I'm far from that right now).
@@ -258,12 +287,15 @@ if __name__ == "__main__":
         this_mp3 = mp3_id
         is_first_part = ''
 
-# Store away all our precious media
-if not os.path.isdir(media_folder):
-    os.makedirs(media_folder)
-for file in anki_media:
-    shutil.move(file, media_folder)
+    # Store away all our precious media
+    if not os.path.isdir(media_folder):
+        os.makedirs(media_folder)
+    for file in anki_media:
+        shutil.move(file, media_folder)
 
-anki_package = genanki.Package(anki_deck)
-anki_package.media_files = [media_folder + "/" + file for file in anki_media] # This doesn't seem to do anything
-anki_package.write_to_file('big_bang.apkg')
+    anki_package = genanki.Package(anki_deck)
+    anki_package.media_files = [media_folder + "/" + file for file in anki_media] # This doesn't seem to do anything
+    anki_package.write_to_file('big_bang.apkg')
+
+if __name__ == "__main__":
+    main()
