@@ -163,18 +163,18 @@ def count_singable_notes(lilypond_notes, open_parantheses=0):
     singable_notes = 0
     ignore_next = False
     for t in tokens:
-        if t.endswith('('):
-            open_parantheses += 1
         if t.endswith(')'):
             open_parantheses -= 1
         if ignore_next:
-            ignore_next = False
+            ignore_next = t.endswith('~') # There might be consecutive ties
             continue
         if t.endswith('~'):
             ignore_next = True
         if open_parantheses == 0:
             if not t.startswith('r'):
                 singable_notes += 1
+        if t.endswith('('):
+            open_parantheses += 1
     return singable_notes
 
 class ChoirNote(genanki.Note):
@@ -262,13 +262,7 @@ def main():
             "e2( fis)",
             "r8 g fis d e e16 e~ e8 r",
             ]
-    lyric_shards = [
-            "Our whole u -- ni -- verse was in a hot, dense state",
-            "ah __ wait!",
-            "the earth be -- gan to cool the au -- to -- trophs be -- gan to drool",
-            "ah __ ",
-            "we built the py -- ra -- mids",
-            ]
+    lyrics = "Our whole u -- ni -- verse was in a hot, dense state ah __ wait! the earth be -- gan to cool the au -- to -- trophs be -- gan to drool ah __ we built the py -- ra -- mids"
 
     anki_deck = genanki.Deck(1452737122, 'Physikerchor') # random but hardcoded
     anki_media = []
@@ -279,15 +273,21 @@ def main():
     qustn_png_no_lyrics_id = ''
     qustn_lyrics = ''
     qustn_mp3_id = ''
+
     songtitle = "Big Bang Theory Theme"
     is_first_part = 'True'
     tags = ['big_bang_theory', 'physikerchor']
 
+    num_seen_singable_notes = 0
     for shard_num in range(len(note_shards)):
         # First up, generate the 'answr' shard, which will be the answer…
         notes = note_shards[shard_num]
-        answr_lyrics = lyric_shards[shard_num]
         cur_global_options = global_options + "\\partial " + str(partials[shard_num])
+
+        # Select the relevant piece of lyrics based on the amount of notes that are actually singable (e.g. no rests, no portamento)
+        num_lyric_relevant_notes = count_singable_notes(notes)
+        answr_lyrics = create_lyric_slice(lyrics, num_seen_singable_notes, num_seen_singable_notes + num_lyric_relevant_notes + 1)
+        num_seen_singable_notes += num_lyric_relevant_notes
 
         dot_ly_file_name = fill_template_mp3( notes, global_options=cur_global_options, tempo=tempo )
         answr_mp3_id = create_mp3(dot_ly_file_name, remove_source=True)
