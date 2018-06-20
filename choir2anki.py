@@ -122,6 +122,7 @@ class ChoirNote(genanki.Note):
         model_id = '1544216877' # random string, hardcoded
         model_name = 'choir_model'
         fields = [
+            {'name': 'title_and_part'},
             {'name': 'songtitle'},
             {'name': 'part_number'},
             {'name': 'is_first_part'},
@@ -176,10 +177,13 @@ class ChoirNote(genanki.Note):
 
     @property
     def guid(self):
-        return genanki.guid_for(self.fields[0], self.fields[1]) # Don't hash random strings, only identifier: songtitle & part_number
-
+        return genanki.guid_for(self.fields[1], self.fields[2]) # Don't hash random strings, only identifier: songtitle & part_number
 
 if __name__ == "__main__":
+    '''Run the thing.
+
+    TODO: Incorporate docopt to parse commandline options (but I'm far from that right now).
+    '''
     clef = "bass"
     tempo = "4=100"
     global_options = "\\key g \\major \\time 4/4"
@@ -217,6 +221,7 @@ if __name__ == "__main__":
     this_mp3 = ''
     songtitle = "Big Bang Theory Theme"
     is_first_part = 'True'
+    tags = ['big_bang_theory', 'physikerchor']
 
     for i in range(len(note_shards)):
         notes = note_shards[i]
@@ -232,7 +237,8 @@ if __name__ == "__main__":
 
         anki_media += [mp3_id, png_id, png_no_lyrics_id]
         anki_note = ChoirNote(  model=ChoirNote.choir_model(),
-                                fields=[songtitle,
+                                fields=[songtitle + " - " + str(i),
+                                            songtitle,
                                             str(i),
                                             is_first_part,
                                             this_score,
@@ -242,7 +248,8 @@ if __name__ == "__main__":
                                             png_id,
                                             png_no_lyrics_id,
                                             lyrics,
-                                            mp3_id])
+                                            mp3_id],
+                                tags=tags)
         anki_deck.add_note(anki_note)
 
         this_score = png_id
