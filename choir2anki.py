@@ -126,8 +126,8 @@ def fill_template_png(notes,
         out_file.write(out_file_content)
     return out_file_name
 
-def create_normal_lyrics( lilypond_lyrics ):
-    '''Forms normal words from lilypond-tokenized lyrics.'''
+def create_normal_lyrics(lilypond_lyrics):
+    '''Form normal words from lilypond-tokenized lyrics.'''
     tokens = lilypond_lyrics.split()
     words = []
 
@@ -142,9 +142,40 @@ def create_normal_lyrics( lilypond_lyrics ):
             join_next = False
         else:
             words += [t]
-
     return " ".join(words)
 
+def create_lyric_slice(lilypond_lyrics, slice_start, slice_end):
+    '''Create a piece of lyrics that spans the given interval.'''
+    tokens = lilypond_lyrics.split()
+    lyric_slice = []
+
+    syllable_counter = 0
+    for t in tokens:
+        if slice_start <= syllable_counter and syllable_counter < slice_end:
+            lyric_slice += [t]
+        if t != "--":
+            syllable_counter += 1
+    return " ".join(lyric_slice)
+
+def count_singable_notes(lilypond_notes, open_parantheses=0):
+    tokens = lilypond_notes.split()
+
+    singable_notes = 0
+    ignore_next = False
+    for t in tokens:
+        if t.endswith('('):
+            open_parantheses += 1
+        if t.endswith(')'):
+            open_parantheses -= 1
+        if ignore_next:
+            ignore_next = False
+            continue
+        if t.endswith('~'):
+            ignore_next = True
+        if open_parantheses == 0:
+            if not t.startswith('r'):
+                singable_notes += 1
+    return singable_notes
 
 class ChoirNote(genanki.Note):
     def choir_model():
@@ -155,14 +186,14 @@ class ChoirNote(genanki.Note):
             {'name': 'songtitle'},
             {'name': 'part_number'},
             {'name': 'is_first_part'},
-            {'name': 'this_score'},
-            {'name': 'this_score_no_lyrics'},
-            {'name': 'this_lyrics'},
-            {'name': 'this_mp3'},
-            {'name': 'next_score'},
-            {'name': 'next_score_no_lyrics'},
-            {'name': 'next_lyrics'},
-            {'name': 'next_mp3'},
+            {'name': 'qustn_score'},
+            {'name': 'qustn_score_no_lyrics'},
+            {'name': 'qustn_lyrics'},
+            {'name': 'qustn_mp3'},
+            {'name': 'answr_score'},
+            {'name': 'answr_score_no_lyrics'},
+            {'name': 'answr_lyrics'},
+            {'name': 'answr_mp3'},
         ]
         templates = [
             {
@@ -170,14 +201,14 @@ class ChoirNote(genanki.Note):
               'qfmt': '''<span style="color:aqua; font-size:24px">Keep singing</span><br /><br />
                         {{#is_first_part}}Beginning of “{{songtitle}}”{{/is_first_part}}
                         {{^is_first_part}}
-                        <img src="{{this_score}}">
-                        <span style="display:none">[sound:{{this_mp3}}]</span>
+                        <img src="{{qustn_score}}">
+                        <span style="display:none">[sound:{{qustn_mp3}}]</span>
                         {{/is_first_part}}
                         ''',
               'afmt': '''{{FrontSide}}
                         <hr id="answer">
-                        <img src="{{next_score}}">
-                        <span style="display:none">[sound:{{next_mp3}}]</span>
+                        <img src="{{answr_score}}">
+                        <span style="display:none">[sound:{{answr_mp3}}]</span>
                         ''',
             },
             {
@@ -185,12 +216,12 @@ class ChoirNote(genanki.Note):
               'qfmt': '''<span style="color:aqua; font-size:24px">Keep singing</span><br /><br />
                         {{#is_first_part}}Beginning of “{{songtitle}}”{{/is_first_part}}
                         {{^is_first_part}}
-                        <span style="display:none">[sound:{{this_mp3}}]</span>
+                        <span style="display:none">[sound:{{qustn_mp3}}]</span>
                         {{/is_first_part}}
                         ''',
               'afmt': '''{{FrontSide}}
                         <hr id="answer">
-                        <span style="display:none">[sound:{{next_mp3}}]</span>
+                        <span style="display:none">[sound:{{answr_mp3}}]</span>
                         ''',
             },
         ]
@@ -244,47 +275,50 @@ def main():
 
     # The first anki note is a special case, since we need to ask the question “How does song X start?”
     # Because of that, the extra field 'songtitle' gets supplied with the title and the note deals with that
-    this_score = ''
-    this_score_no_lyrics = ''
-    this_lyrics = ''
-    this_mp3 = ''
+    qustn_png_id = ''
+    qustn_png_no_lyrics_id = ''
+    qustn_lyrics = ''
+    qustn_mp3_id = ''
     songtitle = "Big Bang Theory Theme"
     is_first_part = 'True'
     tags = ['big_bang_theory', 'physikerchor']
 
-    for i in range(len(note_shards)):
-        notes = note_shards[i]
-        lyrics = lyric_shards[i]
-        cur_global_options = global_options + "\\partial " + str(partials[i])
+    for shard_num in range(len(note_shards)):
+        # First up, generate the 'answr' shard, which will be the answer…
+        notes = note_shards[shard_num]
+        answr_lyrics = lyric_shards[shard_num]
+        cur_global_options = global_options + "\\partial " + str(partials[shard_num])
 
         dot_ly_file_name = fill_template_mp3( notes, global_options=cur_global_options, tempo=tempo )
-        mp3_id = create_mp3(dot_ly_file_name, remove_source=True)
-        dot_ly_file_name = fill_template_png( notes, global_options=cur_global_options, clef=clef, lyrics=lyrics)
-        png_id = create_png(dot_ly_file_name, remove_source=True)
+        answr_mp3_id = create_mp3(dot_ly_file_name, remove_source=True)
+        dot_ly_file_name = fill_template_png( notes, global_options=cur_global_options, clef=clef, lyrics=answr_lyrics)
+        answr_png_id = create_png(dot_ly_file_name, remove_source=True)
         dot_ly_file_name = fill_template_png( notes, global_options=cur_global_options, clef=clef, lyrics="")
-        png_no_lyrics_id = create_png(dot_ly_file_name, remove_source=True)
+        answr_png_no_lyrics_id = create_png(dot_ly_file_name, remove_source=True)
 
-        anki_media += [mp3_id, png_id, png_no_lyrics_id]
+        # …then, fill the note with both 'qustn' shard, the question, and the 'answr' shard, the answer…
+        anki_media += [answr_mp3_id, answr_png_id, answr_png_no_lyrics_id]
         anki_note = ChoirNote(  model=ChoirNote.choir_model(),
-                                fields=[songtitle + " - " + str(i),
+                                fields=[songtitle + " - " + str(shard_num),
                                             songtitle,
-                                            str(i),
+                                            str(shard_num),
                                             is_first_part,
-                                            this_score,
-                                            this_score_no_lyrics,
-                                            this_lyrics,
-                                            this_mp3,
-                                            png_id,
-                                            png_no_lyrics_id,
-                                            lyrics,
-                                            mp3_id],
+                                            qustn_png_id,
+                                            qustn_png_no_lyrics_id,
+                                            create_normal_lyrics(qustn_lyrics),
+                                            qustn_mp3_id,
+                                            answr_png_id,
+                                            answr_png_no_lyrics_id,
+                                            create_normal_lyrics(answr_lyrics),
+                                            answr_mp3_id],
                                 tags=tags)
         anki_deck.add_note(anki_note)
 
-        this_score = png_id
-        this_score_no_lyrics = png_no_lyrics_id
-        this_lyrics = lyrics
-        this_mp3 = mp3_id
+        # …lastly, cache the 'answr' shard, so it can become the next question.
+        qustn_png_id = answr_png_id
+        qustn_png_no_lyrics_id = answr_png_no_lyrics_id
+        qustn_lyrics = answr_lyrics
+        qustn_mp3_id = answr_mp3_id
         is_first_part = ''
 
     # Store away all our precious media
