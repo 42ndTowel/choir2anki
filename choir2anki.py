@@ -1,5 +1,5 @@
 """
-A script to transform a lilypond file (or some input, not very clear yet) into an anki deck.
+A script to transform an annotated lilypond file into an anki deck.
 
 Dependencies: abjad, lilypond, latex, timidity, lame, genanki,
 """
@@ -53,7 +53,8 @@ def create_mp3(source_file_name, mp3_name=None, remove_source=False):
 
     return mp3_name + ".mp3"
 
-def create_png(source_file_name, png_name=None, tmp_folder=tmp_folder, remove_source=False):
+def create_png(source_file_name, png_name=None, tmp_folder=tmp_folder,
+               remove_source=False):
     """Typeset music and write to disk as .png.
 
     Given the file name of a (valid) lilypond file, typeset the music on a
@@ -92,10 +93,8 @@ def create_png(source_file_name, png_name=None, tmp_folder=tmp_folder, remove_so
 
     return png_name + ".png"
 
-def fill_template_mp3(notes,
-                      out_file_name="filled_mp3_template",
-                      global_options="",
-                      tempo='4=100',
+def fill_template_mp3(notes, out_file_name="filled_mp3_template",
+                      global_options="", tempo='4=100',
                       template_file_name=mp3_template_file_name):
     """Given a template, fill it with the approriate options."""
     options = {}
@@ -109,11 +108,8 @@ def fill_template_mp3(notes,
         out_file.write(out_file_content)
     return out_file_name
 
-def fill_template_png(notes,
-                      out_file_name="filled_png_template",
-                      lyrics="",
-                      global_options="",
-                      clef="bass",
+def fill_template_png(notes, out_file_name="filled_png_template", lyrics="",
+                      global_options="", clef="bass",
                       template_file_name=png_template_file_name):
     """Given a template, fill it with the approriate options."""
     options = {}
@@ -184,9 +180,8 @@ def count_singable_notes(lilypond_notes, open_parantheses=0):
     for t in tokens:
         if t.endswith(')'):
             open_parantheses -= 1
-            if open_parantheses == 0:
-                 # Although the foregoing note is included in the portamento, the lyrics "__" need to be accounted for
-                singable_notes += 1
+            # Although the foregoing note is included in the portamento, the lyrics "__" need to be accounted for
+            singable_notes += open_parantheses == 0
         if next_is_tie:
             next_is_tie = t.endswith('~') # There might be consecutive ties
             continue # ties are sung as one note
@@ -292,15 +287,19 @@ def create_normal_note_shards(lilypond_notes, relative, split_symbol='%%'):
 
 def main(source_file_name):
     '''Run the thing.'''
-    clef_dict = {'bass':'bass', 'tenor':'bass', 'alto':'violin', 'soprano':'violin'}
-    songtitle, global_options, relative, tempo, notes, lyrics, voice = extract_information_from_source(source_file_name)
+    clef_dict = {'bass':'bass',
+                 'tenor':'bass',
+                 'alto':'violin',
+                 'soprano':'violin'}
+    info = extract_information_from_source(source_file_name)
+    songtitle, global_options, relative, tempo, notes, lyrics, voice = info
     tags = [songtitle, voice, 'physikerchor']
     tags = [x.lower().replace(' ', '_') for x in tags]
 
-    partials = [4, 1, 4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, ]
+    partials = [4, 1, 4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
     note_shards = create_normal_note_shards(notes, relative)
 
-    anki_deck = genanki.Deck(1452737122, 'Physikerchor') # random but hardcoded id to allow updates
+    anki_deck = genanki.Deck(1452737122, 'Physikerchor') # random but hardcoded
     anki_media = []
 
     is_first_part = 'True'
@@ -312,36 +311,50 @@ def main(source_file_name):
     for shard_num in range(len(note_shards)):
         # First up, generate the 'answr' shard, which will be the answer…
         cur_notes = note_shards[shard_num]
-        cur_global_options = global_options + r"\partial " + str(partials[shard_num])
+        cur_global_options = (global_options
+                              + r"\partial "
+                              + str(partials[shard_num]))
 
-        # Select the relevant piece of lyrics based on the amount of notes that are actually singable (e.g. no rests, no portamento)
+        # Select the relevant piece of lyrics based on the amount of notes that
+        # are actually singable (e.g. no rests, no portamento)
         num_lyric_relevant_notes = count_singable_notes(cur_notes)
-        answr_lyrics = create_lyric_slice(lyrics, num_seen_singable_notes, num_seen_singable_notes + num_lyric_relevant_notes + 1)
+        answr_lyrics = create_lyric_slice(lyrics, num_seen_singable_notes,
+                         num_seen_singable_notes + num_lyric_relevant_notes + 1)
         num_seen_singable_notes += num_lyric_relevant_notes
 
-        dot_ly_file_name = fill_template_mp3( cur_notes, global_options=cur_global_options, tempo=tempo )
-        answr_mp3_id = create_mp3(dot_ly_file_name, remove_source=True)
-        dot_ly_file_name = fill_template_png( cur_notes, global_options=cur_global_options, clef=clef_dict[voice], lyrics=answr_lyrics)
-        answr_png_id = create_png(dot_ly_file_name, remove_source=True)
-        dot_ly_file_name = fill_template_png( cur_notes, global_options=cur_global_options, clef=clef_dict[voice], lyrics="")
-        answr_png_no_lyrics_id = create_png(dot_ly_file_name, remove_source=True)
+        dot_ly_file_name = fill_template_mp3(cur_notes,
+                                             global_options=cur_global_options,
+                                             tempo=tempo)
+        answr_mp3_id = create_mp3(dot_ly_file_name,
+                                  remove_source=True)
+        dot_ly_file_name = fill_template_png(cur_notes,
+                                             global_options=cur_global_options,
+                                             clef=clef_dict[voice],
+                                             lyrics=answr_lyrics)
+        answr_png_id = create_png(dot_ly_file_name,
+                                  remove_source=True)
+        dot_ly_file_name = fill_template_png(cur_notes,
+                                             global_options=cur_global_options,
+                                             clef=clef_dict[voice])
+        answr_png_no_lyrics_id = create_png(dot_ly_file_name,
+                                            remove_source=True)
 
-        # …then, fill the note with both 'qustn' shard, the question, and the 'answr' shard, the answer…
+        # …then, fill the note with both 'qustn' shard and the 'answr' shard…
         anki_media += [answr_mp3_id, answr_png_id, answr_png_no_lyrics_id]
-        anki_note = ChoirNote(  model=ChoirNote.choir_model(),
-                                fields=[songtitle + " - " + str(shard_num),
-                                            songtitle,
-                                            str(shard_num),
-                                            is_first_part,
-                                            qustn_png_id,
-                                            qustn_png_no_lyrics_id,
-                                            create_normal_lyrics(qustn_lyrics),
-                                            qustn_mp3_id,
-                                            answr_png_id,
-                                            answr_png_no_lyrics_id,
-                                            create_normal_lyrics(answr_lyrics),
-                                            answr_mp3_id],
-                                tags=tags)
+        anki_note = ChoirNote(model=ChoirNote.choir_model(),
+                              fields=[songtitle + " - " + str(shard_num),
+                                      songtitle,
+                                      str(shard_num),
+                                      is_first_part,
+                                      qustn_png_id,
+                                      qustn_png_no_lyrics_id,
+                                      create_normal_lyrics(qustn_lyrics),
+                                      qustn_mp3_id,
+                                      answr_png_id,
+                                      answr_png_no_lyrics_id,
+                                      create_normal_lyrics(answr_lyrics),
+                                      answr_mp3_id],
+                              tags=tags)
         anki_deck.add_note(anki_note)
 
         # …lastly, cache the 'answr' shard, so it can become the next question.
@@ -359,13 +372,15 @@ def main(source_file_name):
 
     # And export the deck
     anki_package = genanki.Package(anki_deck)
-    anki_package.media_files = [media_folder + "/" + file for file in anki_media] # This doesn't seem to do anything
+    anki_package.media_files = [media_folder + "/" + f for f in anki_media]
     anki_package.write_to_file(songtitle + '.apkg')
 
 if __name__ == "__main__":
     source_file_name = 'big_bang_theory_theme.ly'
-    #source_file_name = 'cosmic_gall.ly'
-    #songtitle, global_options, relative, tempo, notes, lyrics, voice = extract_information_from_source(source_file_name)
+    source_file_name = 'cosmic_gall.ly'
+
+    #info = extract_information_from_source(source_file_name)
+    #songtitle, global_options, relative, tempo, notes, lyrics, voice = info
     #note_shards = create_normal_note_shards(notes, relative)
     #for n in note_shards:
     #    print(n, count_singable_notes(n))
@@ -375,7 +390,6 @@ if __name__ == "__main__":
     #global_options = global_options.replace('\\partial ' + partial, '')
 
     #notes_duration = abjad.inspect(abjad_notes).get_duration()
-    #upbeat = (notes_duration * 4) % 4 # 0 for all integers, nonzero for fractions of 4
+    #upbeat = (notes_duration * 4) % 4
 
     main(source_file_name)
-    #main('cosmic_gall.ly')
