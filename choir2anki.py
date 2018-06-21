@@ -156,24 +156,29 @@ def extract_information_from_source(source_file_name, voice='bass'):
     notes = rel_and_notes[2].replace('\\global', '').strip()
     return songtitle, global_options, relative, tempo, notes, lyrics, voice
 
-def extract_specifics_from_global_options(global_options):
-    key_pattern = re.search("\\\\key ([a-g])(?:[ ])(\\\\major|\\\\minor|)",
-                            global_options)
-    if key_pattern:
-        key = key_pattern[1] + " " + key_pattern[2]
-        global_options = global_options.replace('\\key ' + key, '')
+def extract_key_time_partial(options):
+    '''Extract key, time, and anacrusis from global options'''
+    key = None
+    for key in re.finditer("\\\\key ([a-g])(?:[ ]|)(\\\\major|\\\\minor|)",
+                            options):
+        key = key[1] + " " + key[2]
+    if key:
+        options = options.replace('\\key ' + key, '')
 
-    time_pattern = re.search('\\\\time ([0-9]*/[0-9]*)', global_options)
-    if time_pattern:
-        time = time_pattern[1]
-        global_options = global_options.replace('\\time ' + time, '')
+    time = None
+    for time in re.finditer('\\\\time ([0-9]*/[0-9]*)', options):
+        time = time[1]
+    if time:
+        options = options.replace('\\time ' + time, '')
 
-    partial_pattern = re.search('\\\\partial ([0-9]*)', global_options)
-    if partial_pattern:
-        partial = partial_pattern[1]
-        global_options = global_options.replace('\\partial ' + partial, '')
-    global_options = global_options.strip()
-    return key, time, partial, global_options
+    partial = None
+    for partial in re.finditer('\\\\partial ([0-9]*)', options):
+        partial = partial[1]
+    if partial:
+        options = options.replace('\\partial ' + partial, '')
+        
+    options = options.strip()
+    return key, time, partial, options
 
 def create_normal_lyrics(lilypond_lyrics):
     '''Form normal words from lilypond-tokenized lyrics.'''
@@ -351,7 +356,7 @@ def main(source_file_name):
     tags = [songtitle, voice, 'physikerchor']
     tags = [x.lower().replace(' ', '_') for x in tags]
 
-    partials = [4, 1, 4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    key, time, partial, options = extract_key_time_partial(global_options)
     note_shards = create_normal_note_shards(notes, relative)
 
     anki_deck = genanki.Deck(1452737122, 'Physikerchor') # random but hardcoded
@@ -366,9 +371,10 @@ def main(source_file_name):
     for shard_num in range(len(note_shards)):
         # First up, generate the 'answr' shard, which will be the answer…
         cur_notes = note_shards[shard_num]
-        cur_global_options = (global_options
-                              + r"\partial "
-                              + str(partials[shard_num]))
+        cur_options = (r"\key " + key
+                       + r" \time " + time
+                       + r" \partial " + partial
+                       + r" " + options)
 
         # Select the relevant piece of lyrics based on the amount of notes that
         # are actually singable (e.g. no rests, no portamento)
@@ -378,18 +384,18 @@ def main(source_file_name):
         num_seen_singable_notes += num_lyric_relevant_notes
 
         dot_ly_file_name = fill_template_mp3(cur_notes,
-                                             global_options=cur_global_options,
+                                             global_options=cur_options,
                                              tempo=tempo)
         answr_mp3_id = create_mp3(dot_ly_file_name,
                                   remove_source=True)
         dot_ly_file_name = fill_template_png(cur_notes,
-                                             global_options=cur_global_options,
+                                             global_options=cur_options,
                                              clef=clef_dict[voice],
                                              lyrics=answr_lyrics)
         answr_png_id = create_png(dot_ly_file_name,
                                   remove_source=True)
         dot_ly_file_name = fill_template_png(cur_notes,
-                                             global_options=cur_global_options,
+                                             global_options=cur_options,
                                              clef=clef_dict[voice])
         answr_png_no_lyrics_id = create_png(dot_ly_file_name,
                                             remove_source=True)
@@ -412,7 +418,14 @@ def main(source_file_name):
                               tags=tags)
         anki_deck.add_note(anki_note)
 
-        # …lastly, cache the 'answr' shard, so it can become the next question.
+        # …find out if there was a change in time, key, or partial…
+        new_key, new_time, _, _ = extract_key_time_partial(cur_notes)
+        if new_key:
+            key = new_key
+        if new_time:
+            time = new_time
+
+        # …cache the 'answr' shard, so it can become the next question.
         qustn_png_id = answr_png_id
         qustn_png_no_lyrics_id = answr_png_no_lyrics_id
         qustn_lyrics = answr_lyrics
