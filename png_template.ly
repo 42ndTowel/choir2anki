@@ -1,6 +1,7 @@
 \documentclass{standalone}
 \begin{document}
 \begin{lilypond}
+	\language "english"
 	\layout {
 		indent = #0
 		line-width = #50000

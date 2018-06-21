@@ -1,7 +1,7 @@
 """
 A script to transform a lilypond file (or some input, not very clear yet) into an anki deck.
 
-Dependencies: lilypond, latex, timidity, lame, genanki
+Dependencies: abjad, lilypond, latex, timidity, lame, genanki,
 """
 
 mp3_template_file_name = "mp3_template"
@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import uuid
 import genanki
+import abjad
 from string import Template
 
 def create_mp3(source_file_name, mp3_name=None, remove_source=False):
@@ -131,14 +132,17 @@ def extract_information_from_source(source_file_name, voice='bass'):
     '''Given a lilypond file in Physikerchor format, extract the relevant metadata, notes and lyrics'''
     with open(source_file_name) as input_file:
         input_string = input_file.read()
-    # regexes ahead. If anything brakes, good luck!
+    # regexes ahead. If anything breaks, good luck!
     songtitle = re.search("\\\\header(?:[\s]*){(?:[.|\s]*)title = \"(.*)\"", input_string)[1].strip()
     global_options = re.search("global = {([^}]*)}", input_string)[1].replace('\n', ' ').strip()
     tempo = re.search("\\\\midi(?:[\s]*){(?:[.|\s]*)\\\\tempo ([^}]*)}", input_string)[1].strip()
-    lyrics = re.search(voice + "Verse = \\\\lyricmode {([^}]*)}", input_string)[1].replace('\n', ' ').strip()
+    if re.search(voice + "Verse = \\\\lyricmode {([^}]*)}", input_string):
+        lyrics = re.search(voice + "Verse = \\\\lyricmode {([^}]*)}", input_string)[1].replace('\n', ' ').strip()
+    else: # Everybody sings the same
+        lyrics = re.search("verse = \\\\lyricmode {([^}]*)}", input_string)[1].replace('\n', ' ').strip()
     rel_and_notes = re.search(voice + " = \\\\relative ([^={]*) {([^}]*)}", input_string)
     relative = rel_and_notes[1]
-    notes = rel_and_notes[2].replace('\n', ' ').replace('\\global', '').strip()
+    notes = rel_and_notes[2].replace('\\global', '').strip()
     return songtitle, global_options, relative, tempo, notes, lyrics, voice
 
 def create_normal_lyrics(lilypond_lyrics):
@@ -178,14 +182,17 @@ def count_singable_notes(lilypond_notes, open_parantheses=0):
     singable_notes = 0
     next_is_tie = False
     for t in tokens:
-        if t.endswith(')'): # Although that note is included in the portamento, the lyrics "__" needs to be accounted for
+        if t.endswith(')'):
             open_parantheses -= 1
+            if open_parantheses == 0:
+                 # Although the foregoing note is included in the portamento, the lyrics "__" need to be accounted for
+                singable_notes += 1
         if next_is_tie:
             next_is_tie = t.endswith('~') # There might be consecutive ties
             continue # ties are sung as one note
         if t.endswith('~'):
             next_is_tie = True
-        if open_parantheses == 0 and not t.startswith('r'):
+        if open_parantheses == 0 and re.match('^[a-g]', t):
             singable_notes += 1
         if t.endswith('('):
             open_parantheses += 1
@@ -254,21 +261,44 @@ class ChoirNote(genanki.Note):
     def guid(self):
         return genanki.guid_for(self.fields[1], self.fields[2]) # Don't hash random strings, only identifier: songtitle & part_number
 
+def create_normal_note_shards(lilypond_notes, relative, split_symbol='%%'):
+    '''Turn a stretch of lilypond notes given in relative notation into corresponding note shards according to annotation.'''
+
+    # In order to normalize (i.e. annotate each note with octave and duration), we need the entire context
+    parser = abjad.lilypondparsertools.LilyPondParser(default_language='nederlands') # Apparently, Christian speaks dutch…
+    abjad_notes = parser(r"\relative " + relative + r" { " + lilypond_notes + r" }")
+    normalized_notes = abjad.LilyPondFormatManager.format_lilypond_value(abjad_notes)
+    normalized_notes = normalized_notes.split('\n')
+    normalized_notes = [n.strip() for n in normalized_notes][1:-1] # Throw away '{' and '}'
+
+    # Since the abjad parser throws away comments (i.e. our annotation), we need the original (relative) notes to get the length
+    notes = lilypond_notes.split(split_symbol)
+    shard_lengths = [len(parser(r"\relative " + relative + r" { " + n + r" }")) for n in notes] # counts only notes & rests
+
+    # Having both the entire context in normalized form and the desired lengths, combine the two
+    note_shards = []
+    for l in shard_lengths:
+        shard, normalized_notes = normalized_notes[:l], normalized_notes[l:]
+        # The abjad parser turns some things (e.g. time changes) into comments. Those don't count towards shard length
+        num_comments_found = sum([x.startswith('%%%') for x in shard])
+        num_comments_compensated = 0
+        while num_comments_found != num_comments_compensated:
+            shard_addition, normalized_notes = normalized_notes[:num_comments_found], normalized_notes[num_comments_found:]
+            shard += shard_addition
+            num_comments_found = sum([x.startswith('%%%') for x in shard])
+            num_comments_compensated += len(shard_addition)
+        note_shards += [" ".join(shard)]
+    return note_shards
+
 def main(source_file_name):
     '''Run the thing.'''
+    clef_dict = {'bass':'bass', 'tenor':'bass', 'alto':'violin', 'soprano':'violin'}
     songtitle, global_options, relative, tempo, notes, lyrics, voice = extract_information_from_source(source_file_name)
     tags = [songtitle, voice, 'physikerchor']
     tags = [x.lower().replace(' ', '_') for x in tags]
-    clef = "bass"
-    '''
-    How to get here (more) automatically:
-    Put the duration suffix after each note to make it context-free
-    Keep track of octave and put after each note to make it context-free
-        - replace \\relative with \\absolute
-    '''
+
     partials = [4, 1, 4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, ]
-    split_symbol = '%%'
-    note_shards = notes.split(split_symbol)
+    note_shards = create_normal_note_shards(notes, relative)
 
     anki_deck = genanki.Deck(1452737122, 'Physikerchor') # random but hardcoded id to allow updates
     anki_media = []
@@ -281,19 +311,19 @@ def main(source_file_name):
     num_seen_singable_notes = 0
     for shard_num in range(len(note_shards)):
         # First up, generate the 'answr' shard, which will be the answer…
-        notes = note_shards[shard_num]
-        cur_global_options = global_options + "\\partial " + str(partials[shard_num])
+        cur_notes = note_shards[shard_num]
+        cur_global_options = global_options + r"\partial " + str(partials[shard_num])
 
         # Select the relevant piece of lyrics based on the amount of notes that are actually singable (e.g. no rests, no portamento)
-        num_lyric_relevant_notes = count_singable_notes(notes)
+        num_lyric_relevant_notes = count_singable_notes(cur_notes)
         answr_lyrics = create_lyric_slice(lyrics, num_seen_singable_notes, num_seen_singable_notes + num_lyric_relevant_notes + 1)
         num_seen_singable_notes += num_lyric_relevant_notes
 
-        dot_ly_file_name = fill_template_mp3( notes, global_options=cur_global_options, tempo=tempo )
+        dot_ly_file_name = fill_template_mp3( cur_notes, global_options=cur_global_options, tempo=tempo )
         answr_mp3_id = create_mp3(dot_ly_file_name, remove_source=True)
-        dot_ly_file_name = fill_template_png( notes, global_options=cur_global_options, clef=clef, lyrics=answr_lyrics)
+        dot_ly_file_name = fill_template_png( cur_notes, global_options=cur_global_options, clef=clef_dict[voice], lyrics=answr_lyrics)
         answr_png_id = create_png(dot_ly_file_name, remove_source=True)
-        dot_ly_file_name = fill_template_png( notes, global_options=cur_global_options, clef=clef, lyrics="")
+        dot_ly_file_name = fill_template_png( cur_notes, global_options=cur_global_options, clef=clef_dict[voice], lyrics="")
         answr_png_no_lyrics_id = create_png(dot_ly_file_name, remove_source=True)
 
         # …then, fill the note with both 'qustn' shard, the question, and the 'answr' shard, the answer…
@@ -327,9 +357,25 @@ def main(source_file_name):
     for file in anki_media:
         shutil.move(file, media_folder)
 
+    # And export the deck
     anki_package = genanki.Package(anki_deck)
     anki_package.media_files = [media_folder + "/" + file for file in anki_media] # This doesn't seem to do anything
-    anki_package.write_to_file('big_bang.apkg')
+    anki_package.write_to_file(songtitle + '.apkg')
 
 if __name__ == "__main__":
-    main('big_bang_theory_theme.ly')
+    source_file_name = 'big_bang_theory_theme.ly'
+    #source_file_name = 'cosmic_gall.ly'
+    #songtitle, global_options, relative, tempo, notes, lyrics, voice = extract_information_from_source(source_file_name)
+    #note_shards = create_normal_note_shards(notes, relative)
+    #for n in note_shards:
+    #    print(n, count_singable_notes(n))
+
+    ## Comments for retaining the current upbeat    
+    #partial = re.search('\\\\partial ([0-9]*)', global_options)[1]
+    #global_options = global_options.replace('\\partial ' + partial, '')
+
+    #notes_duration = abjad.inspect(abjad_notes).get_duration()
+    #upbeat = (notes_duration * 4) % 4 # 0 for all integers, nonzero for fractions of 4
+
+    main(source_file_name)
+    #main('cosmic_gall.ly')
