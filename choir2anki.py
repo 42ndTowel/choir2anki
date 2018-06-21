@@ -141,6 +141,24 @@ def extract_information_from_source(source_file_name, voice='bass'):
     notes = rel_and_notes[2].replace('\\global', '').strip()
     return songtitle, global_options, relative, tempo, notes, lyrics, voice
 
+def extract_specifics_from_global_options(global_options):
+    key_pattern = re.search("\\\\key ([a-g])(?:[ ])(\\\\major|\\\\minor|)", global_options)
+    if key_pattern:
+        key = key_pattern[1] + " " + key_pattern[2]
+        global_options = global_options.replace('\\key ' + key, '')
+
+    time_pattern = re.search('\\\\time ([0-9]*/[0-9]*)', global_options)
+    if time_pattern:
+        time = time_pattern[1]
+        global_options = global_options.replace('\\time ' + time, '')
+
+    partial_pattern = re.search('\\\\partial ([0-9]*)', global_options)
+    if partial_pattern:
+        partial = partial_pattern[1]
+        global_options = global_options.replace('\\partial ' + partial, '')
+    global_options = global_options.strip()
+    return key, time, partial, global_options
+
 def create_normal_lyrics(lilypond_lyrics):
     '''Form normal words from lilypond-tokenized lyrics.'''
     tokens = lilypond_lyrics.split()
@@ -381,13 +399,8 @@ if __name__ == "__main__":
 
     #info = extract_information_from_source(source_file_name)
     #songtitle, global_options, relative, tempo, notes, lyrics, voice = info
-    #note_shards = create_normal_note_shards(notes, relative)
-    #for n in note_shards:
-    #    print(n, count_singable_notes(n))
-
-    ## Comments for retaining the current upbeat    
-    #partial = re.search('\\\\partial ([0-9]*)', global_options)[1]
-    #global_options = global_options.replace('\\partial ' + partial, '')
+    #sp = extract_specifics_from_global_options(global_options)
+    #print(sp)
 
     #notes_duration = abjad.inspect(abjad_notes).get_duration()
     #upbeat = (notes_duration * 4) % 4
