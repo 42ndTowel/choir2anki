@@ -186,20 +186,35 @@ def extract_key_time_partial(options):
 
 def calculate_new_partial(partial, time, cur_notes):
     parser = abjad.lilypondparsertools.LilyPondParser()
+    # If there was a change in \time, that implies completed measures and we
+    # thus have to look only at the part after the last change of \time
+    if cur_notes.find('\\time') >= 0:
+        partial = None
+        time_before = time_now = None
+        for time_now in re.finditer('\\\\time ([0-9]*/[0-9]*)', cur_notes):
+            time_before = time_now
+            time_now = time_now[1]
+        split_notes = cur_notes.split('\\time ' + time_now)
+        # If the \time change was last command, no notes after, pick time_before
+        time = time_now
+        if split_notes[-1] == '':
+            split_notes = split_notes[-2].split('\\time ' + time_before)
+            time = time_before
+        cur_notes = split_notes[-1]
+
+    # With or without change in \time, see how incomplete last measurement is
     abj_notes = parser(r'\new Voice { ' + cur_notes + r'}')
     notes_duration = abjad.inspect(abj_notes).get_duration()
     if partial:
-        # Compensating for an ugly workaround
-        if partial.find('*') < 0:
-            partial = abjad.Duration.from_lilypond_duration_string(partial)
-        else:
+        # Compensating for the multiples workaround
+        if partial.find('*') >= 0:
             partial, numerator = partial.split('*')
             partial = abjad.Duration(partial)
             partial *= int(numerator)
+        else:
+            partial = abjad.Duration.from_lilypond_duration_string(partial)
     time = abjad.Duration(time)
 
-    # For now, we can't deal with time shifts.
-    # The necessary information is in the cur_notes, however
     if partial:
         notes_duration -= partial
     partial = time - (notes_duration % time)
@@ -210,7 +225,7 @@ def calculate_new_partial(partial, time, cur_notes):
     else:
         try:
             partial = partial.lilypond_duration_string
-        except abjad.AssignabilityError:
+        except abjad.AssignabilityError: # lilypond understands multiples
             numerator = partial.numerator
             partial /= numerator
             partial = partial.lilypond_duration_string + '*' + str(numerator)
@@ -480,6 +495,7 @@ def main(source_file_name):
     anki_package = genanki.Package(anki_deck)
     anki_package.media_files = [media_folder + "/" + f for f in anki_media]
     anki_package.write_to_file(songtitle + '.apkg')
+    print('Successfully created ' + songtitle + '.apkg')
 
 if __name__ == "__main__":
     source_file_name = 'big_bang_theory_theme.ly'
