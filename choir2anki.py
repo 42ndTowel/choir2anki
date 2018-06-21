@@ -43,7 +43,8 @@ def create_mp3(source_file_name, mp3_name=None, remove_source=False):
             source_file_name + ".midi"],
             stdout=subprocess.DEVNULL)
     subprocess.run(["lame",
-            source_file_name + ".wav"])
+            source_file_name + ".wav"],
+            stdout=subprocess.DEVNULL)
     os.remove(source_file_name + ".midi")
     os.remove(source_file_name + ".wav")
     shutil.move(source_file_name + ".mp3", mp3_name + ".mp3")
@@ -78,12 +79,15 @@ def create_png(source_file_name, png_name=None, tmp_folder=tmp_folder,
             "latex",
             "--output",
             tmp_folder,
-            source_file_name + ".ly"])
+            source_file_name + ".ly"],
+            stdout=subprocess.DEVNULL)
     os.chdir(tmp_folder)
     subprocess.run(["latex",
-            source_file_name + ".tex"])
+            source_file_name + ".tex"],
+            stdout=subprocess.DEVNULL)
     subprocess.run(["dvipng",
-            source_file_name + ".dvi"])
+            source_file_name + ".dvi"],
+            stdout=subprocess.DEVNULL)
     os.chdir("..")
     shutil.move(tmp_folder + "/" + source_file_name + "1.png",
                 "./" + png_name + ".png")
@@ -176,9 +180,41 @@ def extract_key_time_partial(options):
         partial = partial[1]
     if partial:
         options = options.replace('\\partial ' + partial, '')
-        
+
     options = options.strip()
     return key, time, partial, options
+
+def calculate_new_partial(partial, time, cur_notes):
+    parser = abjad.lilypondparsertools.LilyPondParser()
+    abj_notes = parser(r'\new Voice { ' + cur_notes + r'}')
+    notes_duration = abjad.inspect(abj_notes).get_duration()
+    if partial:
+        # Compensating for an ugly workaround
+        if partial.find('*') < 0:
+            partial = abjad.Duration.from_lilypond_duration_string(partial)
+        else:
+            partial, numerator = partial.split('*')
+            partial = abjad.Duration(partial)
+            partial *= int(numerator)
+    time = abjad.Duration(time)
+
+    # For now, we can't deal with time shifts.
+    # The necessary information is in the cur_notes, however
+    if partial:
+        notes_duration -= partial
+    partial = time - (notes_duration % time)
+
+    # Ended on a completed measurement. lilypond doesn't like \partial 0…
+    if partial >= time:
+        partial = None
+    else:
+        try:
+            partial = partial.lilypond_duration_string
+        except abjad.AssignabilityError:
+            numerator = partial.numerator
+            partial /= numerator
+            partial = partial.lilypond_duration_string + '*' + str(numerator)
+    return partial
 
 def create_normal_lyrics(lilypond_lyrics):
     '''Form normal words from lilypond-tokenized lyrics.'''
@@ -373,8 +409,9 @@ def main(source_file_name):
         cur_notes = note_shards[shard_num]
         cur_options = (r"\key " + key
                        + r" \time " + time
-                       + r" \partial " + partial
                        + r" " + options)
+        if partial:
+            cur_options += r" \partial " + partial
 
         # Select the relevant piece of lyrics based on the amount of notes that
         # are actually singable (e.g. no rests, no portamento)
@@ -424,6 +461,7 @@ def main(source_file_name):
             key = new_key
         if new_time:
             time = new_time
+        partial = calculate_new_partial(partial, time, cur_notes)
 
         # …cache the 'answr' shard, so it can become the next question.
         qustn_png_id = answr_png_id
@@ -445,9 +483,6 @@ def main(source_file_name):
 
 if __name__ == "__main__":
     source_file_name = 'big_bang_theory_theme.ly'
-    #source_file_name = 'cosmic_gall.ly'
-
-    #notes_duration = abjad.inspect(abj_notes).get_duration()
-    #upbeat = (notes_duration * 4) % 4
+    source_file_name = 'cosmic_gall.ly'
 
     main(source_file_name)
