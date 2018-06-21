@@ -37,7 +37,7 @@ def create_mp3(source_file_name, mp3_name=None, remove_source=False):
 
     subprocess.run(["lilypond",
             source_file_name + ".ly"],
-            stderr=subprocess.DEVNULL) # For some reasons, lilypond spams the error stream…
+            stderr=subprocess.DEVNULL) # For some reason, lilypond spams stderr
     subprocess.run(["timidity",
             "-Ow",
             source_file_name + ".midi"],
@@ -85,7 +85,8 @@ def create_png(source_file_name, png_name=None, tmp_folder=tmp_folder,
     subprocess.run(["dvipng",
             source_file_name + ".dvi"])
     os.chdir("..")
-    shutil.move(tmp_folder + "/" + source_file_name + "1.png", "./" + png_name + ".png")
+    shutil.move(tmp_folder + "/" + source_file_name + "1.png",
+                "./" + png_name + ".png")
     shutil.rmtree(tmp_folder)
 
     if remove_source:
@@ -102,10 +103,11 @@ def fill_template_mp3(notes, out_file_name="filled_mp3_template",
     options["tempo"] = tempo
     options["global_options"] = global_options
 
-    with open(template_file_name + ".ly") as mp3_template_file, open(out_file_name + ".ly", 'w') as out_file:
-        template = Template(mp3_template_file.read())
-        out_file_content = template.substitute(options)
-        out_file.write(out_file_content)
+    with open(template_file_name + ".ly") as mp3_template_file:
+        with open(out_file_name + ".ly", 'w') as out_file:
+            template = Template(mp3_template_file.read())
+            out_file_content = template.substitute(options)
+            out_file.write(out_file_content)
     return out_file_name
 
 def fill_template_png(notes, out_file_name="filled_png_template", lyrics="",
@@ -118,31 +120,45 @@ def fill_template_png(notes, out_file_name="filled_png_template", lyrics="",
     options["lyrics"] = lyrics
     options["global_options"] = global_options
 
-    with open(template_file_name + ".ly") as png_template_file, open(out_file_name + ".ly", 'w') as out_file:
-        template = Template(png_template_file.read())
-        out_file_content = template.substitute(options)
-        out_file.write(out_file_content)
+    with open(template_file_name + ".ly") as png_template_file:
+        with open(out_file_name + ".ly", 'w') as out_file:
+            template = Template(png_template_file.read())
+            out_file_content = template.substitute(options)
+            out_file.write(out_file_content)
     return out_file_name
 
 def extract_information_from_source(source_file_name, voice='bass'):
-    '''Given a lilypond file in Physikerchor format, extract the relevant metadata, notes and lyrics'''
+    '''Given a Physikerchor lilypond file, extract metadata, notes and lyrics'''
     with open(source_file_name) as input_file:
         input_string = input_file.read()
+
     # regexes ahead. If anything breaks, good luck!
-    songtitle = re.search("\\\\header(?:[\s]*){(?:[.|\s]*)title = \"(.*)\"", input_string)[1].strip()
-    global_options = re.search("global = {([^}]*)}", input_string)[1].replace('\n', ' ').strip()
-    tempo = re.search("\\\\midi(?:[\s]*){(?:[.|\s]*)\\\\tempo ([^}]*)}", input_string)[1].strip()
+    songtitle = re.search("\\\\header(?:[\s]*){(?:[.|\s]*)title = \"(.*)\"",
+                          input_string)[1]
+    global_options = re.search("global = {([^}]*)}",
+                               input_string)[1]
+    tempo = re.search("\\\\midi(?:[\s]*){(?:[.|\s]*)\\\\tempo ([^}]*)}",
+                      input_string)[1]
     if re.search(voice + "Verse = \\\\lyricmode {([^}]*)}", input_string):
-        lyrics = re.search(voice + "Verse = \\\\lyricmode {([^}]*)}", input_string)[1].replace('\n', ' ').strip()
+        lyrics = re.search(voice + "Verse = \\\\lyricmode {([^}]*)}",
+                           input_string)[1]
     else: # Everybody sings the same
-        lyrics = re.search("verse = \\\\lyricmode {([^}]*)}", input_string)[1].replace('\n', ' ').strip()
-    rel_and_notes = re.search(voice + " = \\\\relative ([^={]*) {([^}]*)}", input_string)
+        lyrics = re.search("verse = \\\\lyricmode {([^}]*)}",
+                           input_string)[1]
+    rel_and_notes = re.search(voice + " = \\\\relative ([^={]*) {([^}]*)}",
+                              input_string)
+
+    songtitle = songtitle.strip()
+    global_options = global_options.replace('\n', ' ').strip()
+    tempo = tempo.strip()
+    lyrics = lyrics.replace('\n', ' ').strip()
     relative = rel_and_notes[1]
     notes = rel_and_notes[2].replace('\\global', '').strip()
     return songtitle, global_options, relative, tempo, notes, lyrics, voice
 
 def extract_specifics_from_global_options(global_options):
-    key_pattern = re.search("\\\\key ([a-g])(?:[ ])(\\\\major|\\\\minor|)", global_options)
+    key_pattern = re.search("\\\\key ([a-g])(?:[ ])(\\\\major|\\\\minor|)",
+                            global_options)
     if key_pattern:
         key = key_pattern[1] + " " + key_pattern[2]
         global_options = global_options.replace('\\key ' + key, '')
@@ -198,7 +214,7 @@ def count_singable_notes(lilypond_notes, open_parantheses=0):
     for t in tokens:
         if t.endswith(')'):
             open_parantheses -= 1
-            # Although the foregoing note is included in the portamento, the lyrics "__" need to be accounted for
+            # account for lyrics '__' that indicates holding a note
             singable_notes += open_parantheses == 0
         if next_is_tie:
             next_is_tie = t.endswith('~') # There might be consecutive ties
@@ -232,8 +248,12 @@ class ChoirNote(genanki.Note):
         templates = [
             {
               'name': 'with_score',
-              'qfmt': '''<span style="color:aqua; font-size:24px">Keep singing</span><br /><br />
-                        {{#is_first_part}}Beginning of “{{songtitle}}”{{/is_first_part}}
+              'qfmt': '''<span style="color:aqua; font-size:24px">
+                            Keep singing
+                        </span><br /><br />
+                        {{#is_first_part}}
+                            Beginning of “{{songtitle}}”
+                        {{/is_first_part}}
                         {{^is_first_part}}
                         <img src="{{qustn_score}}">
                         <span style="display:none">[sound:{{qustn_mp3}}]</span>
@@ -247,8 +267,12 @@ class ChoirNote(genanki.Note):
             },
             {
               'name': 'without_score',
-              'qfmt': '''<span style="color:aqua; font-size:24px">Keep singing</span><br /><br />
-                        {{#is_first_part}}Beginning of “{{songtitle}}”{{/is_first_part}}
+              'qfmt': '''<span style="color:aqua; font-size:24px">
+                            Keep singing
+                        </span><br /><br />
+                        {{#is_first_part}}
+                            Beginning of “{{songtitle}}”
+                        {{/is_first_part}}
                         {{^is_first_part}}
                         <span style="display:none">[sound:{{qustn_mp3}}]</span>
                         {{/is_first_part}}
@@ -272,35 +296,48 @@ class ChoirNote(genanki.Note):
 
     @property
     def guid(self):
-        return genanki.guid_for(self.fields[1], self.fields[2]) # Don't hash random strings, only identifier: songtitle & part_number
+        # Don't hash random strings, only identifier: songtitle & part_number
+        return genanki.guid_for(self.fields[1], self.fields[2])
 
 def create_normal_note_shards(lilypond_notes, relative, split_symbol='%%'):
-    '''Turn a stretch of lilypond notes given in relative notation into corresponding note shards according to annotation.'''
+    '''Turn relative lilypond notes into note shards based on annotation.'''
 
-    # In order to normalize (i.e. annotate each note with octave and duration), we need the entire context
-    parser = abjad.lilypondparsertools.LilyPondParser(default_language='nederlands') # Apparently, Christian speaks dutch…
-    abjad_notes = parser(r"\relative " + relative + r" { " + lilypond_notes + r" }")
-    normalized_notes = abjad.LilyPondFormatManager.format_lilypond_value(abjad_notes)
-    normalized_notes = normalized_notes.split('\n')
-    normalized_notes = [n.strip() for n in normalized_notes][1:-1] # Throw away '{' and '}'
+    # To turn relative to absolute, we need entire context
+    # Apparently, Christian speaks dutch…
+    parser = abjad.lilypondparsertools\
+                  .LilyPondParser(default_language='nederlands')
+    abj_notes = parser(r"\relative "
+                         + relative
+                         + r" { " + lilypond_notes + r" }")
+    normal_notes = abjad.LilyPondFormatManager.format_lilypond_value(abj_notes)
+    normal_notes = normal_notes.split('\n')
+    normal_notes = [n.strip() for n in normal_notes][1:-1] # '{' and '}'
 
-    # Since the abjad parser throws away comments (i.e. our annotation), we need the original (relative) notes to get the length
+    # Since the abjad parser throws away comments (i.e. our annotation),
+    # we need the original notes to get the length of the shards
     notes = lilypond_notes.split(split_symbol)
-    shard_lengths = [len(parser(r"\relative " + relative + r" { " + n + r" }")) for n in notes] # counts only notes & rests
+    shard_lengths = [len(parser(r"\relative " # counts only notes & rests
+                                + relative
+                                + r" { " + n + r" }")) for n in notes]
 
-    # Having both the entire context in normalized form and the desired lengths, combine the two
+    # Combine notes in normalized form and the desired lengths
     note_shards = []
     for l in shard_lengths:
-        shard, normalized_notes = normalized_notes[:l], normalized_notes[l:]
-        # The abjad parser turns some things (e.g. time changes) into comments. Those don't count towards shard length
-        num_comments_found = sum([x.startswith('%%%') for x in shard])
-        num_comments_compensated = 0
-        while num_comments_found != num_comments_compensated:
-            shard_addition, normalized_notes = normalized_notes[:num_comments_found], normalized_notes[num_comments_found:]
+        shard, normal_notes = normal_notes[:l], normal_notes[l:]
+        # The abjad parser turns some things (e.g. time changes) into comments.
+        # Those don't count towards shard length
+        cmnts_found = sum([x.startswith('%%%') for x in shard])
+        cmnts_compensated = 0
+        while cmnts_found != cmnts_compensated:
+            shard_addition, normal_notes = (normal_notes[:cmnts_found],
+                                            normal_notes[cmnts_found:])
             shard += shard_addition
-            num_comments_found = sum([x.startswith('%%%') for x in shard])
-            num_comments_compensated += len(shard_addition)
+            cmnts_found = sum([x.startswith('%%%') for x in shard])
+            cmnts_compensated += len(shard_addition)
         note_shards += [" ".join(shard)]
+
+    # Lastly, remove comments
+    note_shards = [n.replace('%%%', '') for n in note_shards]
     return note_shards
 
 def main(source_file_name):
@@ -395,14 +432,9 @@ def main(source_file_name):
 
 if __name__ == "__main__":
     source_file_name = 'big_bang_theory_theme.ly'
-    source_file_name = 'cosmic_gall.ly'
+    #source_file_name = 'cosmic_gall.ly'
 
-    #info = extract_information_from_source(source_file_name)
-    #songtitle, global_options, relative, tempo, notes, lyrics, voice = info
-    #sp = extract_specifics_from_global_options(global_options)
-    #print(sp)
-
-    #notes_duration = abjad.inspect(abjad_notes).get_duration()
+    #notes_duration = abjad.inspect(abj_notes).get_duration()
     #upbeat = (notes_duration * 4) % 4
 
     main(source_file_name)
