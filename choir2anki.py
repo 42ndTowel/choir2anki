@@ -4,8 +4,6 @@ A script to transform an annotated lilypond file into an anki deck.
 Dependencies: abjad, lilypond, latex, timidity, lame, genanki,
 """
 
-mp3_template_file_name = "mp3_template"
-png_template_file_name = "png_template"
 tmp_folder = "OUTPUT__TMP"
 media_folder = "collection.media"
 
@@ -17,6 +15,7 @@ import uuid
 import genanki
 import abjad
 from string import Template
+from choirnote import ChoirNote, mp3_template, png_template
 
 def create_mp3(source_file_name, mp3_name=None, remove_source=False):
     """Generate an .mp3 and write it to disk.
@@ -99,24 +98,21 @@ def create_png(source_file_name, png_name=None, tmp_folder=tmp_folder,
     return png_name + ".png"
 
 def fill_template_mp3(notes, out_file_name="filled_mp3_template",
-                      global_options="", tempo='4=100',
-                      template_file_name=mp3_template_file_name):
+                      global_options="", tempo='4=100'):
     """Given a template, fill it with the approriate options."""
     options = {}
     options["notes"] = notes
     options["tempo"] = tempo
     options["global_options"] = global_options
 
-    with open(template_file_name + ".ly") as mp3_template_file:
-        with open(out_file_name + ".ly", 'w') as out_file:
-            template = Template(mp3_template_file.read())
-            out_file_content = template.substitute(options)
-            out_file.write(out_file_content)
+    with open(out_file_name + ".ly", 'w') as out_file:
+        template = Template(mp3_template)
+        out_file_content = template.substitute(options)
+        out_file.write(out_file_content)
     return out_file_name
 
 def fill_template_png(notes, out_file_name="filled_png_template", lyrics="",
-                      global_options="", clef="bass",
-                      template_file_name=png_template_file_name):
+                      global_options="", clef="bass"):
     """Given a template, fill it with the approriate options."""
     options = {}
     options["clef"] = clef
@@ -124,11 +120,10 @@ def fill_template_png(notes, out_file_name="filled_png_template", lyrics="",
     options["lyrics"] = lyrics
     options["global_options"] = global_options
 
-    with open(template_file_name + ".ly") as png_template_file:
-        with open(out_file_name + ".ly", 'w') as out_file:
-            template = Template(png_template_file.read())
-            out_file_content = template.substitute(options)
-            out_file.write(out_file_content)
+    with open(out_file_name + ".ly", 'w') as out_file:
+        template = Template(png_template)
+        out_file_content = template.substitute(options)
+        out_file.write(out_file_content)
     return out_file_name
 
 def extract_information_from_source(source_file_name, voice='bass'):
@@ -250,8 +245,8 @@ def create_normal_lyrics(lilypond_lyrics):
             words += [t]
     return " ".join(words)
 
-def create_lyric_slice(lilypond_lyrics, slice_start, slice_end):
-    '''Create a piece of lyrics that spans the given interval.'''
+def get_lyric_slice(lilypond_lyrics, slice_start, slice_end):
+    '''Get the piece of lyrics that spans the given interval.'''
     tokens = lilypond_lyrics.split()
     lyric_slice = []
 
@@ -286,100 +281,6 @@ def count_singable_notes(lilypond_notes, open_parantheses=0):
         if t.endswith('('):
             open_parantheses += 1
     return singable_notes
-
-class ChoirNote(genanki.Note):
-    def choir_model():
-        model_id = '1544216877' # random string, hardcoded
-        model_name = 'choir_model'
-        fields = [
-            {'name': 'title_and_part'},
-            {'name': 'songtitle'},
-            {'name': 'part_number'},
-            {'name': 'is_first_part'},
-            {'name': 'qustn_score'},
-            {'name': 'qustn_score_no_lyrics'},
-            {'name': 'qustn_lyrics'},
-            {'name': 'qustn_mp3'},
-            {'name': 'answr_score'},
-            {'name': 'answr_score_no_lyrics'},
-            {'name': 'answr_lyrics'},
-            {'name': 'answr_mp3'},
-        ]
-        templates = [
-            {
-              'name': 'with_score',
-              'qfmt': '''
-<span style="color:aqua; font-size:24px">
-    Keep singing
-</span><br /><br />
-{{#is_first_part}}
-    Beginning of “{{songtitle}}”
-{{/is_first_part}}
-{{^is_first_part}}
-<img src="{{qustn_score}}">
-<span style="display:none">[sound:{{qustn_mp3}}]</span>
-{{/is_first_part}}
-''',
-              'afmt': '''
-<span style="color:aqua; font-size:24px">
-    Keep singing
-</span><br /><br />
-{{#is_first_part}}
-    Beginning of “{{songtitle}}”
-{{/is_first_part}}
-{{^is_first_part}}
-<img src="{{qustn_score}}">
-{{/is_first_part}}
-<hr id="answer">
-<img src="{{answr_score}}">
-<span style="display:none">[sound:{{answr_mp3}}]</span>
-''',
-            },
-            {
-              'name': 'without_score',
-              'qfmt': '''
-<span style="color:aqua; font-size:24px">
-    Keep singing
-</span><br /><br />
-{{#is_first_part}}
-    Beginning of “{{songtitle}}”
-{{/is_first_part}}
-{{^is_first_part}}
-{{qustn_lyrics}}
-<span style="display:none">[sound:{{qustn_mp3}}]</span>
-{{/is_first_part}}
-''',
-              'afmt': '''
-<span style="color:aqua; font-size:24px">
-    Keep singing
-</span><br /><br />
-{{#is_first_part}}
-    Beginning of “{{songtitle}}”
-{{/is_first_part}}
-{{^is_first_part}}
-{{qustn_lyrics}}
-{{/is_first_part}}
-<hr id="answer">
-{{answr_lyrics}}
-<span style="display:none">[sound:{{answr_mp3}}]</span>
-''',
-            },
-        ]
-        css = '''
-.card {
-  font-family: arial;
-  font-size: 20px;
-  text-align: center;
-  color: black;
-  background-color: white;
-}
-'''
-        return genanki.Model(model_id, model_name, fields, templates, css)
-
-    @property
-    def guid(self):
-        # Don't hash random strings, only identifier: songtitle & part_number
-        return genanki.guid_for(self.fields[1], self.fields[2])
 
 def create_normal_note_shards(lilypond_notes, relative, split_symbol='%%'):
     '''Turn relative lilypond notes into note shards based on annotation.'''
@@ -455,7 +356,7 @@ def main(source_file_name):
         # Select the relevant piece of lyrics based on the amount of notes that
         # are actually singable (e.g. no rests, no portamento)
         num_lyric_relevant_notes = count_singable_notes(cur_notes)
-        answr_lyrics = create_lyric_slice(lyrics, num_seen_singable_notes,
+        answr_lyrics = get_lyric_slice(lyrics, num_seen_singable_notes,
                          num_seen_singable_notes + num_lyric_relevant_notes)
         num_seen_singable_notes += num_lyric_relevant_notes
 
@@ -529,6 +430,7 @@ if __name__ == "__main__":
     #source_file_name = 'schoepfung_metamorphosen.ly'
 
     # TODO
-    # In Lilypond, use multine comments and tags: %{<NOTE>%}, %{<BEGIN_X>%}, …
+    # In Lilypond, use multine comments & tags: %{<NOTE>%}, %{<BEGIN_SPLIT>%}, …
+    # Make the splitting rules based on the lyrics, not notes
 
     main(source_file_name)
