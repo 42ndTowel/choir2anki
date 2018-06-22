@@ -258,9 +258,11 @@ def create_lyric_slice(lilypond_lyrics, slice_start, slice_end):
     for t in tokens:
         if slice_start <= syllable_counter and syllable_counter < slice_end:
             lyric_slice += [t]
-        if t != "--":
+        if t != "--" and t != "__":
             syllable_counter += 1
-    return " ".join(lyric_slice)
+    lyric_slice = " ".join(lyric_slice)
+    lyric_slice = lyric_slice.lstrip("[_|-| ]") # Slice starts in middle of word
+    return lyric_slice
 
 def count_singable_notes(lilypond_notes, open_parantheses=0):
     tokens = lilypond_notes.split()
@@ -270,10 +272,10 @@ def count_singable_notes(lilypond_notes, open_parantheses=0):
     for t in tokens:
         if t.endswith(')'):
             open_parantheses -= 1
-            # account for lyrics '__' that indicates holding a note
-            singable_notes += open_parantheses == 0
         if next_is_tie:
-            next_is_tie = t.endswith('~') # There might be consecutive ties
+            next_is_tie = False
+            if t.endswith('~'): # There might be consecutive ties
+                next_is_tie = True
             continue # ties are sung as one note
         if t.endswith('~'):
             next_is_tie = True
@@ -315,7 +317,15 @@ class ChoirNote(genanki.Note):
                         <span style="display:none">[sound:{{qustn_mp3}}]</span>
                         {{/is_first_part}}
                         ''',
-              'afmt': '''{{FrontSide}}
+              'afmt': '''<span style="color:aqua; font-size:24px">
+                            Keep singing
+                        </span><br /><br />
+                        {{#is_first_part}}
+                            Beginning of “{{songtitle}}”
+                        {{/is_first_part}}
+                        {{^is_first_part}}
+                        <img src="{{qustn_score}}">
+                        {{/is_first_part}}
                         <hr id="answer">
                         <img src="{{answr_score}}">
                         <span style="display:none">[sound:{{answr_mp3}}]</span>
@@ -330,10 +340,19 @@ class ChoirNote(genanki.Note):
                             Beginning of “{{songtitle}}”
                         {{/is_first_part}}
                         {{^is_first_part}}
+                        {{qustn_lyrics}}
                         <span style="display:none">[sound:{{qustn_mp3}}]</span>
                         {{/is_first_part}}
                         ''',
-              'afmt': '''{{FrontSide}}
+              'afmt': '''<span style="color:aqua; font-size:24px">
+                            Keep singing
+                        </span><br /><br />
+                        {{#is_first_part}}
+                            Beginning of “{{songtitle}}”
+                        {{/is_first_part}}
+                        {{^is_first_part}}
+                        {{qustn_lyrics}}
+                        {{/is_first_part}}
                         <hr id="answer">
                         {{answr_lyrics}}
                         <span style="display:none">[sound:{{answr_mp3}}]</span>
@@ -432,7 +451,7 @@ def main(source_file_name):
         # are actually singable (e.g. no rests, no portamento)
         num_lyric_relevant_notes = count_singable_notes(cur_notes)
         answr_lyrics = create_lyric_slice(lyrics, num_seen_singable_notes,
-                         num_seen_singable_notes + num_lyric_relevant_notes + 1)
+                         num_seen_singable_notes + num_lyric_relevant_notes)
         num_seen_singable_notes += num_lyric_relevant_notes
 
         dot_ly_file_name = fill_template_mp3(cur_notes,
@@ -455,7 +474,8 @@ def main(source_file_name):
         # …then, fill the note with both 'qustn' shard and the 'answr' shard…
         anki_media += [answr_mp3_id, answr_png_id, answr_png_no_lyrics_id]
         anki_note = ChoirNote(model=ChoirNote.choir_model(),
-                              fields=[songtitle + " - " + str(shard_num),
+                              fields=["{} - {:003n}".format(songtitle,
+                                                            shard_num),
                                       songtitle,
                                       str(shard_num),
                                       is_first_part,
@@ -495,10 +515,12 @@ def main(source_file_name):
     anki_package = genanki.Package(anki_deck)
     anki_package.media_files = [media_folder + "/" + f for f in anki_media]
     anki_package.write_to_file(songtitle + '.apkg')
-    print('Successfully created ' + songtitle + '.apkg')
+    print('\n========\nSuccessfully generated ' + songtitle + '.apkg\n========')
 
 if __name__ == "__main__":
     source_file_name = 'big_bang_theory_theme.ly'
     source_file_name = 'cosmic_gall.ly'
+    source_file_name = 'meet_the_elements.ly'
+    #source_file_name = 'schoepfung_metamorphosen.ly'
 
     main(source_file_name)
