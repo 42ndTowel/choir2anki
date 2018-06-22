@@ -185,6 +185,7 @@ def extract_key_time_partial(options):
     return key, time, partial, options
 
 def calculate_new_partial(partial, time, cur_notes):
+    '''Calculate how much of the last measurement is left incompleted.'''
     parser = abjad.lilypondparsertools.LilyPondParser()
     # If there was a change in \time, that implies completed measures and we
     # thus have to look only at the part after the last change of \time
@@ -261,10 +262,11 @@ def create_lyric_slice(lilypond_lyrics, slice_start, slice_end):
         if t != "--" and t != "__":
             syllable_counter += 1
     lyric_slice = " ".join(lyric_slice)
-    lyric_slice = lyric_slice.lstrip("[_|-| ]") # Slice starts in middle of word
+    lyric_slice = lyric_slice.lstrip("[_|-| ]") # if start is in middle of word
     return lyric_slice
 
 def count_singable_notes(lilypond_notes, open_parantheses=0):
+    '''Given a piece of music, count how many notes start in it.'''
     tokens = lilypond_notes.split()
 
     singable_notes = 0
@@ -306,67 +308,72 @@ class ChoirNote(genanki.Note):
         templates = [
             {
               'name': 'with_score',
-              'qfmt': '''<span style="color:aqua; font-size:24px">
-                            Keep singing
-                        </span><br /><br />
-                        {{#is_first_part}}
-                            Beginning of “{{songtitle}}”
-                        {{/is_first_part}}
-                        {{^is_first_part}}
-                        <img src="{{qustn_score}}">
-                        <span style="display:none">[sound:{{qustn_mp3}}]</span>
-                        {{/is_first_part}}
-                        ''',
-              'afmt': '''<span style="color:aqua; font-size:24px">
-                            Keep singing
-                        </span><br /><br />
-                        {{#is_first_part}}
-                            Beginning of “{{songtitle}}”
-                        {{/is_first_part}}
-                        {{^is_first_part}}
-                        <img src="{{qustn_score}}">
-                        {{/is_first_part}}
-                        <hr id="answer">
-                        <img src="{{answr_score}}">
-                        <span style="display:none">[sound:{{answr_mp3}}]</span>
-                        ''',
+              'qfmt': '''
+<span style="color:aqua; font-size:24px">
+    Keep singing
+</span><br /><br />
+{{#is_first_part}}
+    Beginning of “{{songtitle}}”
+{{/is_first_part}}
+{{^is_first_part}}
+<img src="{{qustn_score}}">
+<span style="display:none">[sound:{{qustn_mp3}}]</span>
+{{/is_first_part}}
+''',
+              'afmt': '''
+<span style="color:aqua; font-size:24px">
+    Keep singing
+</span><br /><br />
+{{#is_first_part}}
+    Beginning of “{{songtitle}}”
+{{/is_first_part}}
+{{^is_first_part}}
+<img src="{{qustn_score}}">
+{{/is_first_part}}
+<hr id="answer">
+<img src="{{answr_score}}">
+<span style="display:none">[sound:{{answr_mp3}}]</span>
+''',
             },
             {
               'name': 'without_score',
-              'qfmt': '''<span style="color:aqua; font-size:24px">
-                            Keep singing
-                        </span><br /><br />
-                        {{#is_first_part}}
-                            Beginning of “{{songtitle}}”
-                        {{/is_first_part}}
-                        {{^is_first_part}}
-                        {{qustn_lyrics}}
-                        <span style="display:none">[sound:{{qustn_mp3}}]</span>
-                        {{/is_first_part}}
-                        ''',
-              'afmt': '''<span style="color:aqua; font-size:24px">
-                            Keep singing
-                        </span><br /><br />
-                        {{#is_first_part}}
-                            Beginning of “{{songtitle}}”
-                        {{/is_first_part}}
-                        {{^is_first_part}}
-                        {{qustn_lyrics}}
-                        {{/is_first_part}}
-                        <hr id="answer">
-                        {{answr_lyrics}}
-                        <span style="display:none">[sound:{{answr_mp3}}]</span>
-                        ''',
+              'qfmt': '''
+<span style="color:aqua; font-size:24px">
+    Keep singing
+</span><br /><br />
+{{#is_first_part}}
+    Beginning of “{{songtitle}}”
+{{/is_first_part}}
+{{^is_first_part}}
+{{qustn_lyrics}}
+<span style="display:none">[sound:{{qustn_mp3}}]</span>
+{{/is_first_part}}
+''',
+              'afmt': '''
+<span style="color:aqua; font-size:24px">
+    Keep singing
+</span><br /><br />
+{{#is_first_part}}
+    Beginning of “{{songtitle}}”
+{{/is_first_part}}
+{{^is_first_part}}
+{{qustn_lyrics}}
+{{/is_first_part}}
+<hr id="answer">
+{{answr_lyrics}}
+<span style="display:none">[sound:{{answr_mp3}}]</span>
+''',
             },
         ]
-        css = '''.card {
-            font-family: arial;
-            font-size: 20px;
-            text-align: center;
-            color: black;
-            background-color: white;
-            }
-            '''
+        css = '''
+.card {
+  font-family: arial;
+  font-size: 20px;
+  text-align: center;
+  color: black;
+  background-color: white;
+}
+'''
         return genanki.Model(model_id, model_name, fields, templates, css)
 
     @property
@@ -441,11 +448,9 @@ def main(source_file_name):
     for shard_num in range(len(note_shards)):
         # First up, generate the 'answr' shard, which will be the answer…
         cur_notes = note_shards[shard_num]
-        cur_options = (r"\key " + key
-                       + r" \time " + time
-                       + r" " + options)
+        cur_options = r"\key {} \time {} {}".format(key, time, options)
         if partial:
-            cur_options += r" \partial " + partial
+            cur_options += r" \partial {}".format(partial)
 
         # Select the relevant piece of lyrics based on the amount of notes that
         # are actually singable (e.g. no rests, no portamento)
@@ -512,7 +517,7 @@ def main(source_file_name):
         shutil.move(file, media_folder)
 
     # And export the deck
-    anki_package = genanki.Package(anki_deck)
+    anki_package = genanki.Package(anki_deck, media_files=anki_media)
     anki_package.media_files = [media_folder + "/" + f for f in anki_media]
     anki_package.write_to_file(songtitle + '.apkg')
     print('\n========\nSuccessfully generated ' + songtitle + '.apkg\n========')
@@ -522,5 +527,8 @@ if __name__ == "__main__":
     source_file_name = 'cosmic_gall.ly'
     source_file_name = 'meet_the_elements.ly'
     #source_file_name = 'schoepfung_metamorphosen.ly'
+
+    # TODO
+    # In Lilypond, use multine comments and tags: %{<NOTE>%}, %{<BEGIN_X>%}, …
 
     main(source_file_name)
