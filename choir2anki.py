@@ -227,8 +227,13 @@ def calculate_new_partial(partial, time, cur_notes):
             partial = partial.lilypond_duration_string + '*' + str(numerator)
     return partial
 
+def remove_lilypond_comments(string):
+    '''NOT YET IMPLEMENTED'''
+    return string
+
 def create_normal_lyrics(lilypond_lyrics):
     '''Form normal words from lilypond-tokenized lyrics.'''
+    lilypond_lyrics = remove_lilypond_comments(lilypond_lyrics)
     tokens = lilypond_lyrics.split()
     words = []
 
@@ -245,41 +250,89 @@ def create_normal_lyrics(lilypond_lyrics):
             words += [t]
     return " ".join(words)
 
+def is_singable_lyric(lilypond_lyric_piece):
+    if lilypond_lyric_piece == "--":
+        return False
+    if lilypond_lyric_piece == "__":
+        return False
+    return  True
+
 def get_lyric_slice(lilypond_lyrics, slice_start, slice_end):
     '''Get the piece of lyrics that spans the given interval.'''
+    lilypond_lyrics = remove_lilypond_comments(lilypond_lyrics)
     tokens = lilypond_lyrics.split()
     lyric_slice = []
 
     syllable_counter = 0
     for t in tokens:
+        if syllable_counter == slice_end and not is_singable_lyric(t):
+            lyric_slice += [t] # Add trailing '__'
         if slice_start <= syllable_counter and syllable_counter < slice_end:
             lyric_slice += [t]
-        if t != "--" and t != "__":
+        if is_singable_lyric(t):
             syllable_counter += 1
     lyric_slice = " ".join(lyric_slice)
     lyric_slice = lyric_slice.lstrip("[_|-| ]") # if start is in middle of word
     return lyric_slice
 
+def count_singable_lyrics(lilypond_lyrics):
+    '''Given a piece of lyrics, count how many syllables are sung in it.'''
+    lilypond_lyrics = remove_lilypond_comments(lilypond_lyrics)
+    tokens = lilypond_lyrics.split()
+
+    syllable_counter = 0
+    for t in tokens:
+        if is_singable_lyric(t):
+            syllable_counter += 1
+    return syllable_counter
+
+def is_singable_note(lilypond_note, next_is_tie, open_parantheses):
+    this_is_tie = next_is_tie
+    next_is_tie = False
+    is_singable = False
+    if open_parantheses == 0 and not this_is_tie:
+        if re.match('^[a-g]', lilypond_note):
+            is_singable = True
+    if lilypond_note.endswith('~'):
+        next_is_tie = True
+    if lilypond_note.endswith(')'):
+        open_parantheses -= 1
+    if lilypond_note.endswith('('):
+        open_parantheses += 1
+    return is_singable, next_is_tie, open_parantheses
+
+def get_note_slice(lilypond_notes, slice_start, slice_end, open_parantheses=0):
+    '''Get the stretch of notes thet spans the given interval.'''
+    lilypond_notes = remove_lilypond_comments(lilypond_notes)
+    tokens = lilypond_notes.split()
+    note_slice = []
+
+    singable_notes = 0
+    next_is_tie = False
+    for t in tokens:
+        is_singable, next_is_tie, open_parantheses = \
+                            is_singable_note(t, next_is_tie, open_parantheses)
+        if singable_notes == slice_end and not is_singable:
+            note_slice += [t] # Add trailing rests, glissando, ties, …
+        if slice_start <= singable_notes and singable_notes < slice_end:
+            note_slice += [t]
+        if is_singable:
+            singable_notes += 1
+    note_slice = " ".join(note_slice)
+    return note_slice
+
 def count_singable_notes(lilypond_notes, open_parantheses=0):
     '''Given a piece of music, count how many notes start in it.'''
+    lilypond_notes = remove_lilypond_comments(lilypond_notes)
     tokens = lilypond_notes.split()
 
     singable_notes = 0
     next_is_tie = False
     for t in tokens:
-        if t.endswith(')'):
-            open_parantheses -= 1
-        if next_is_tie:
-            next_is_tie = False
-            if t.endswith('~'): # There might be consecutive ties
-                next_is_tie = True
-            continue # ties are sung as one note
-        if t.endswith('~'):
-            next_is_tie = True
-        if open_parantheses == 0 and re.match('^[a-g]', t):
+        is_singable, next_is_tie, open_parantheses = \
+                            is_singable_note(t, next_is_tie, open_parantheses)
+        if is_singable:
             singable_notes += 1
-        if t.endswith('('):
-            open_parantheses += 1
     return singable_notes
 
 def create_normal_note_shards(lilypond_notes, relative, split_symbol='%%'):
@@ -425,8 +478,8 @@ def main(source_file_name):
 
 if __name__ == "__main__":
     source_file_name = 'big_bang_theory_theme.ly'
-    source_file_name = 'cosmic_gall.ly'
-    source_file_name = 'meet_the_elements.ly'
+    #source_file_name = 'cosmic_gall.ly'
+    #source_file_name = 'meet_the_elements.ly'
     #source_file_name = 'schoepfung_metamorphosen.ly'
 
     # TODO
