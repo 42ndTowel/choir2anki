@@ -144,7 +144,7 @@ def extract_information_from_source(source_file_name, voice='bass'):
     else: # Everybody sings the same
         lyrics = re.search("verse = \\\\lyricmode {([^}]*)}",
                            input_string)[1]
-    rel_and_notes = re.search(voice + " = \\\\relative ([^={]*) {([^}]*)}",
+    rel_and_notes = re.search(voice + " = \\\\relative ([^={]*) {([^}]*)}", # TODO HERE DON'T CAPTURE '%}' !!!!
                               input_string)
 
     songtitle = songtitle.strip()
@@ -312,6 +312,8 @@ def get_note_slice(lilypond_notes, slice_start, slice_end, open_parantheses=0):
     for t in tokens:
         is_singable, next_is_tie, open_parantheses = \
                             is_singable_note(t, next_is_tie, open_parantheses)
+        # TODO Incorporate intelligence -- Maximize simplicity of partials when
+        # adding rests, thus making the resulting notes more natural
         if singable_notes == slice_end and not is_singable:
             note_slice += [t] # Add trailing rests, glissando, ties, …
         if slice_start <= singable_notes and singable_notes < slice_end:
@@ -335,10 +337,8 @@ def count_singable_notes(lilypond_notes, open_parantheses=0):
             singable_notes += 1
     return singable_notes
 
-def create_normal_note_shards(lilypond_notes, relative, split_symbol='%%'):
-    '''Turn relative lilypond notes into note shards based on annotation.'''
-
-    # To turn relative to absolute, we need entire context
+def create_absolute_notes(lilypond_notes, relative):
+    '''Turn relative lilypond notes into absolute lilypond notes.'''
     # Apparently, Christian speaks dutch…
     parser = abjad.lilypondparsertools\
                   .LilyPondParser(default_language='nederlands')
@@ -348,27 +348,45 @@ def create_normal_note_shards(lilypond_notes, relative, split_symbol='%%'):
     normal_notes = abjad.LilyPondFormatManager.format_lilypond_value(abj_notes)
     normal_notes = normal_notes.split('\n')
     normal_notes = [n.strip() for n in normal_notes][1:-1] # '{' and '}'
+    return normal_notes
+
+def count_musical_tokens(lilypond_notes):
+    parser = abjad.lilypondparsertools\
+                  .LilyPondParser(default_language='nederlands')
+    return len(parser(r"\relative c {" + lilypond_notes + r"}"))
+
+
+def create_normal_note_shards(lilypond_notes, relative,
+                              split_symbol='%%'):
+    '''Turn relative lilypond notes into note shards based on annotation.'''
+
+    # To turn relative to absolute, we need entire context.
+    # Apparently, Christian speaks dutch…
+    parser = abjad.lilypondparsertools\
+                  .LilyPondParser(default_language='nederlands')
+    normal_notes = create_absolute_notes(lilypond_notes, relative)
 
     # Since the abjad parser throws away comments (i.e. our annotation),
     # we need the original notes to get the length of the shards
     notes = lilypond_notes.split(split_symbol)
-    shard_lengths = [len(parser(r"\relative " # counts only notes & rests
-                                + relative
-                                + r" { " + n + r" }")) for n in notes]
+    shard_lengths = [count_musical_tokens(n) for n in notes]
 
     # Combine notes in normalized form and the desired lengths
     note_shards = []
+    comment_starts = ['%%%', '\\']
     for l in shard_lengths:
         shard, normal_notes = normal_notes[:l], normal_notes[l:]
         # The abjad parser turns some things (e.g. time changes) into comments.
         # Those don't count towards shard length
-        cmnts_found = sum([x.startswith('%%%') for x in shard])
+        cmnts_found = sum([x.startswith(y) for x in shard
+                                           for y in comment_starts])
         cmnts_compensated = 0
         while cmnts_found != cmnts_compensated:
             shard_addition, normal_notes = (normal_notes[:cmnts_found],
                                             normal_notes[cmnts_found:])
             shard += shard_addition
-            cmnts_found = sum([x.startswith('%%%') for x in shard])
+            cmnts_found = sum([x.startswith(y) for x in shard
+                                               for y in comment_starts])
             cmnts_compensated += len(shard_addition)
         note_shards += [" ".join(shard)]
 
@@ -486,4 +504,5 @@ if __name__ == "__main__":
     # In Lilypond, use multine comments & tags: %{<NOTE>%}, %{<BEGIN_SPLIT>%}, …
     # Make the splitting rules based on the lyrics, not notes
 
+    #print(create_absolute_notes("\\relative c'' { r1 %{NOTE%}\n\ng4g4( a fis d\ng4 fis) e \n%{NOTE%}\n r8 d\n }", "c'"))
     main(source_file_name)
