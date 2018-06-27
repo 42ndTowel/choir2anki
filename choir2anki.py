@@ -180,7 +180,7 @@ def extract_information_from_source(source_file_name, voice='bass'):
     relative = re.search(r"\\relative ([a-g]['|,]*)", information[voice])[1]
     notes = clean_up(voice + r"= \relative " + relative, information[voice])
     notes = notes.lstrip(r"\global").strip()
-    
+
     return songtitle, global_options, relative, tempo, notes, lyrics, voice
 
 def extract_key_time_partial(options):
@@ -256,7 +256,10 @@ def calculate_new_partial(partial, time, cur_notes):
     return partial
 
 def remove_lilypond_comments(string):
-    '''NOT YET IMPLEMENTED'''
+    '''Remove all comments from a given string'''
+    string += '\n' # Last line workaround until $ matches the way it should.
+    string = ''.join(re.split("(?<!%)%{(?:.|\s)*?%}", string)) # multiline %{…%}
+    string = '\n'.join(re.split("%(?:.*?)\n", string)) # singleline %…\n
     return string
 
 def create_normal_lyrics(lilypond_lyrics):
@@ -278,7 +281,7 @@ def create_normal_lyrics(lilypond_lyrics):
             words += [t]
     return " ".join(words)
 
-def is_singable_lyric(lilypond_lyric_piece):
+def is_singable_syllable(lilypond_lyric_piece):
     if lilypond_lyric_piece == "--":
         return False
     if lilypond_lyric_piece == "__":
@@ -293,11 +296,11 @@ def get_lyric_slice(lilypond_lyrics, slice_start, slice_end):
 
     syllable_counter = 0
     for t in tokens:
-        if syllable_counter == slice_end and not is_singable_lyric(t):
+        if syllable_counter == slice_end and not is_singable_syllable(t):
             lyric_slice += [t] # Add trailing '__'
         if slice_start <= syllable_counter and syllable_counter < slice_end:
             lyric_slice += [t]
-        if is_singable_lyric(t):
+        if is_singable_syllable(t):
             syllable_counter += 1
     lyric_slice = " ".join(lyric_slice)
     lyric_slice = lyric_slice.lstrip("[_|-| ]") # if start is in middle of word
@@ -310,7 +313,7 @@ def count_singable_lyrics(lilypond_lyrics):
 
     syllable_counter = 0
     for t in tokens:
-        if is_singable_lyric(t):
+        if is_singable_syllable(t):
             syllable_counter += 1
     return syllable_counter
 
@@ -379,6 +382,7 @@ def create_absolute_notes(lilypond_notes, relative):
     return normal_notes
 
 def count_musical_tokens(lilypond_notes):
+    '''Count the amount of notes, rests, etc.'''
     parser = abjad.lilypondparsertools\
                   .LilyPondParser(default_language='nederlands')
     return len(parser(r"\relative c {" + lilypond_notes + r"}"))
