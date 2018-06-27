@@ -176,7 +176,7 @@ def extract_information_from_source(source_file_name, voice='bass'):
     global_options = clean_up("global =", information["global"])
     score = clean_up(r"\score =", information[r"\score"])
     midi = extract_from_first_level([r"\midi"], score)[r"\midi"]
-    tempo = re.search(r"\\tempo ([\d|=]*)", midi)
+    tempo = re.search(r"\\tempo ([\d|=]*)", midi)[1]
     relative = re.search(r"\\relative ([a-g]['|,]*)", information[voice])[1]
     notes = clean_up(voice + r"= \relative " + relative, information[voice])
     notes = notes.lstrip(r"\global").strip()
@@ -347,7 +347,9 @@ def get_note_slice(lilypond_notes, slice_start, slice_end, open_parantheses=0):
         # adding rests, thus making the resulting notes more natural
         if singable_notes == slice_end and not is_singable:
             note_slice += [t] # Add trailing rests, glissando, ties, …
-        if slice_start <= singable_notes and singable_notes < slice_end:
+        if slice_start == singable_notes and is_singable:
+            note_slice += [t] # Don't add non-singable stuff before first note
+        if slice_start < singable_notes and singable_notes < slice_end:
             note_slice += [t]
         if is_singable:
             singable_notes += 1
@@ -371,6 +373,7 @@ def count_singable_notes(lilypond_notes, open_parantheses=0):
 def create_absolute_notes(lilypond_notes, relative):
     '''Turn relative lilypond notes into absolute lilypond notes.'''
     # Apparently, Christian speaks dutch…
+    lilypond_notes = remove_lilypond_comments(lilypond_notes)
     parser = abjad.lilypondparsertools\
                   .LilyPondParser(default_language='nederlands')
     abj_notes = parser(r"\relative "
@@ -379,6 +382,7 @@ def create_absolute_notes(lilypond_notes, relative):
     normal_notes = abjad.LilyPondFormatManager.format_lilypond_value(abj_notes)
     normal_notes = normal_notes.split('\n')
     normal_notes = [n.strip() for n in normal_notes][1:-1] # '{' and '}'
+    normal_notes = " ".join(normal_notes)
     return normal_notes
 
 def count_musical_tokens(lilypond_notes):
@@ -397,6 +401,7 @@ def create_normal_note_shards(lilypond_notes, relative,
     parser = abjad.lilypondparsertools\
                   .LilyPondParser(default_language='nederlands')
     normal_notes = create_absolute_notes(lilypond_notes, relative)
+    normal_notes = normal_notes.split(" ")
 
     # Since the abjad parser throws away comments (i.e. our annotation),
     # we need the original notes to get the length of the shards
@@ -438,7 +443,8 @@ def main(source_file_name):
     tags = [x.lower().replace(' ', '_') for x in tags]
 
     key, time, partial, options = extract_key_time_partial(global_options)
-    note_shards = create_normal_note_shards(notes, relative)
+    notes = create_absolute_notes(notes, relative)
+    lyric_shards = re.split("(?<!%)%{(?:.|\s)*?%}", lyrics)
 
     anki_deck = genanki.Deck(1452737122, 'Physikerchor') # random but hardcoded
     anki_media = []
@@ -448,34 +454,34 @@ def main(source_file_name):
     qustn_png_no_lyrics_id = ''
     qustn_lyrics = ''
     qustn_mp3_id = ''
-    num_seen_singable_notes = 0
-    for shard_num in range(len(note_shards)):
+    num_seen_singable_lyrics = 0
+    for shard_num in range(len(lyric_shards)):
         # First up, generate the 'answr' shard, which will be the answer…
-        cur_notes = note_shards[shard_num]
-        cur_options = r"\key {} \time {} {}".format(key, time, options)
+        answr_lyrics = lyric_shards[shard_num]
+        answ_options = r"\key {} \time {} {}".format(key, time, options)
         if partial:
-            cur_options += r" \partial {}".format(partial)
+            answ_options += r" \partial {}".format(partial)
 
-        # Select the relevant piece of lyrics based on the amount of notes that
+        # Select the relevant part of notes based on the amount of lyrics that
         # are actually singable (e.g. no rests, no portamento)
-        num_lyric_relevant_notes = count_singable_notes(cur_notes)
-        answr_lyrics = get_lyric_slice(lyrics, num_seen_singable_notes,
-                         num_seen_singable_notes + num_lyric_relevant_notes)
-        num_seen_singable_notes += num_lyric_relevant_notes
+        num_note_relevant_lyrics = count_singable_lyrics(answr_lyrics)
+        answr_notes = get_note_slice(notes, num_seen_singable_lyrics,
+                         num_seen_singable_lyrics + num_note_relevant_lyrics)
+        num_seen_singable_lyrics += num_note_relevant_lyrics
 
-        dot_ly_file_name = fill_template_mp3(cur_notes,
-                                             global_options=cur_options,
+        dot_ly_file_name = fill_template_mp3(answr_notes,
+                                             global_options=answ_options,
                                              tempo=tempo)
         answr_mp3_id = create_mp3(dot_ly_file_name,
                                   remove_source=True)
-        dot_ly_file_name = fill_template_png(cur_notes,
-                                             global_options=cur_options,
+        dot_ly_file_name = fill_template_png(answr_notes,
+                                             global_options=answ_options,
                                              clef=clef_dict[voice],
                                              lyrics=answr_lyrics)
         answr_png_id = create_png(dot_ly_file_name,
                                   remove_source=True)
-        dot_ly_file_name = fill_template_png(cur_notes,
-                                             global_options=cur_options,
+        dot_ly_file_name = fill_template_png(answr_notes,
+                                             global_options=answ_options,
                                              clef=clef_dict[voice])
         answr_png_no_lyrics_id = create_png(dot_ly_file_name,
                                             remove_source=True)
@@ -500,12 +506,12 @@ def main(source_file_name):
         anki_deck.add_note(anki_note)
 
         # …find out if there was a change in time, key, or partial…
-        new_key, new_time, _, _ = extract_key_time_partial(cur_notes)
+        new_key, new_time, _, _ = extract_key_time_partial(answr_notes)
         if new_key:
             key = new_key
         if new_time:
             time = new_time
-        partial = calculate_new_partial(partial, time, cur_notes)
+        partial = calculate_new_partial(partial, time, answr_notes)
 
         # …cache the 'answr' shard, so it can become the next question.
         qustn_png_id = answr_png_id
