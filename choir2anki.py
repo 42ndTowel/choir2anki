@@ -130,29 +130,57 @@ def extract_information_from_source(source_file_name, voice='bass'):
     '''Given a Physikerchor lilypond file, extract metadata, notes and lyrics'''
     with open(source_file_name) as input_file:
         input_string = input_file.read()
+    parser = abjad.lilypondparsertools.LilyPondParser()
 
-    # regexes ahead. If anything breaks, good luck!
-    songtitle = re.search("\\\\header(?:[\s]*){(?:[.|\s]*)title = \"(.*)\"",
-                          input_string)[1]
-    global_options = re.search("global = {([^}]*)}",
-                               input_string)[1]
-    tempo = re.search("\\\\midi(?:[\s]*){(?:[.|\s]*)\\\\tempo ([^}]*)}",
-                      input_string)[1]
-    if re.search(voice + "Verse = \\\\lyricmode {([^}]*)}", input_string):
-        lyrics = re.search(voice + "Verse = \\\\lyricmode {([^}]*)}",
-                           input_string)[1]
-    else: # Everybody sings the same
-        lyrics = re.search("verse = \\\\lyricmode {([^}]*)}",
-                           input_string)[1]
-    rel_and_notes = re.search(voice + " = \\\\relative ([^={]*) {([^}]*)}", # TODO HERE DON'T CAPTURE '%}' !!!!
-                              input_string)
+    trigger_words = [r"\header", "global", r"\score",
+                     voice + "Verse", "verse", voice]
 
-    songtitle = songtitle.strip()
-    global_options = global_options.replace('\n', ' ').strip()
-    tempo = tempo.strip()
-    lyrics = lyrics.replace('\n', ' ').strip()
-    relative = rel_and_notes[1]
-    notes = rel_and_notes[2].replace('\\global', '').strip()
+    # The lilypond parser has very limited functionality for now. Thus,
+    # we need to extract the relevant blocks of information manually but
+    # can then feed them to the parser to be less error prone than regexes.
+    def extract_from_first_level(trigger_words, input_string):
+        trigger_words = dict(zip(trigger_words, ['']*len(trigger_words)))
+        open_context = 0
+        encountered_context_begin = False
+        is_recording = False
+        recording_word = ''
+        # Keep whitespaces for line comments to keep working
+        for t in re.split(r'(\s+)', input_string):
+            open_context += t.count('{') - t.count('}')
+            open_context += t.count('<<') - t.count('>>')
+            if t in trigger_words.keys() and not is_recording and open_context <= 0:
+                is_recording = True
+                recording_word = t
+
+            if is_recording: # Add everything, keep track of {…} or <<…>> blocks
+                if t.count('{') >= 1 or t.count('<<') >= 1:
+                    encountered_context_begin = True
+                trigger_words[recording_word] += t
+
+            if open_context <= 0 and encountered_context_begin: # Reset
+                is_recording = False
+                open_context = 0
+                encountered_context_begin = False
+                recording_word = ''
+        return trigger_words
+
+    clean_up = lambda kw, st : st.lstrip(kw).strip().strip('{|}').strip()
+
+    information = extract_from_first_level(trigger_words, input_string)
+    songtitle = parser(information[r"\header"]).title
+    verse = "verse"
+    if information[verse] == '':
+        verse = voice + "Verse"
+    lyrics = information[verse].split(r"\lyricmode")[1]
+    lyrics = clean_up("=", lyrics)
+    global_options = clean_up("global =", information["global"])
+    score = clean_up(r"\score =", information[r"\score"])
+    midi = extract_from_first_level([r"\midi"], score)[r"\midi"]
+    tempo = re.search(r"\\tempo ([\d|=]*)", midi)
+    relative = re.search(r"\\relative ([a-g]['|,]*)", information[voice])[1]
+    notes = clean_up(voice + r"= \relative " + relative, information[voice])
+    notes = notes.lstrip(r"\global").strip()
+    
     return songtitle, global_options, relative, tempo, notes, lyrics, voice
 
 def extract_key_time_partial(options):
