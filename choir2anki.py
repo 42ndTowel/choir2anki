@@ -36,14 +36,17 @@ def create_mp3(source_file_name, mp3_name=None, remove_source=False):
 
     subprocess.run(["lilypond",
             source_file_name + ".ly"],
+            stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL) # For some reason, lilypond spams stderr
     subprocess.run(["timidity",
             "-Ow",
             source_file_name + ".midi"],
-            stdout=subprocess.DEVNULL)
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL)
     subprocess.run(["lame",
             source_file_name + ".wav"],
-            stdout=subprocess.DEVNULL)
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL)
     os.remove(source_file_name + ".midi")
     os.remove(source_file_name + ".wav")
     shutil.move(source_file_name + ".mp3", mp3_name + ".mp3")
@@ -79,14 +82,17 @@ def create_png(source_file_name, png_name=None, tmp_folder=tmp_folder,
             "--output",
             tmp_folder,
             source_file_name + ".ly"],
-            stdout=subprocess.DEVNULL)
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL)
     os.chdir(tmp_folder)
     subprocess.run(["latex",
             source_file_name + ".tex"],
-            stdout=subprocess.DEVNULL)
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL)
     subprocess.run(["dvipng",
             source_file_name + ".dvi"],
-            stdout=subprocess.DEVNULL)
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL)
     os.chdir("..")
     shutil.move(tmp_folder + "/" + source_file_name + "1.png",
                 "./" + png_name + ".png")
@@ -383,6 +389,7 @@ def create_absolute_notes(lilypond_notes, relative):
     normal_notes = normal_notes.split('\n')
     normal_notes = [n.strip() for n in normal_notes][1:-1] # '{' and '}'
     normal_notes = " ".join(normal_notes)
+    normal_notes = normal_notes.replace('%%%', '')
     return normal_notes
 
 def count_musical_tokens(lilypond_notes):
@@ -455,9 +462,8 @@ def main(source_file_name):
     qustn_lyrics = ''
     qustn_mp3_id = ''
     num_seen_singable_lyrics = 0
-    for shard_num in range(len(lyric_shards)):
+    for shard_num, answr_lyrics in enumerate(lyric_shards):
         # First up, generate the 'answr' shard, which will be the answer…
-        answr_lyrics = lyric_shards[shard_num]
         answ_options = r"\key {} \time {} {}".format(key, time, options)
         if partial:
             answ_options += r" \partial {}".format(partial)
@@ -525,11 +531,16 @@ def main(source_file_name):
         qustn_mp3_id = answr_mp3_id
         is_first_part = ''
 
+        # Give a little feedback
+        feedback = 'Completed note {:003} of {:003}'.format(shard_num + 1,
+                                                       len(lyric_shards))
+        print(feedback, end='\r')
+
     # Store away all our precious media
     if not os.path.isdir(media_folder):
         os.makedirs(media_folder)
     for file in anki_media:
-        shutil.move(file, media_folder)
+        os.replace(file, media_folder + "/" + file)
 
     # And export the deck
     anki_package = genanki.Package(anki_deck, media_files=anki_media)
@@ -539,13 +550,8 @@ def main(source_file_name):
 
 if __name__ == "__main__":
     source_file_name = 'big_bang_theory_theme.ly'
-    #source_file_name = 'cosmic_gall.ly'
+    source_file_name = 'cosmic_gall.ly'
     #source_file_name = 'meet_the_elements.ly'
     #source_file_name = 'schoepfung_metamorphosen.ly'
 
-    # TODO
-    # In Lilypond, use multine comments & tags: %{<NOTE>%}, %{<BEGIN_SPLIT>%}, …
-    # Make the splitting rules based on the lyrics, not notes
-
-    #print(create_absolute_notes("\\relative c'' { r1 %{NOTE%}\n\ng4g4( a fis d\ng4 fis) e \n%{NOTE%}\n r8 d\n }", "c'"))
     main(source_file_name)
