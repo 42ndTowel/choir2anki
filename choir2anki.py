@@ -469,21 +469,26 @@ def main(source_file_name):
                          num_seen_singable_lyrics + num_note_relevant_lyrics)
         num_seen_singable_lyrics += num_note_relevant_lyrics
 
+        filename = songtitle.replace(' ', '_').lower()
+        filename += "_{:003n}".format(shard_num)
         dot_ly_file_name = fill_template_mp3(answr_notes,
                                              global_options=answ_options,
                                              tempo=tempo)
         answr_mp3_id = create_mp3(dot_ly_file_name,
+                                  mp3_name=filename,
                                   remove_source=True)
         dot_ly_file_name = fill_template_png(answr_notes,
                                              global_options=answ_options,
                                              clef=clef_dict[voice],
                                              lyrics=answr_lyrics)
         answr_png_id = create_png(dot_ly_file_name,
+                                  png_name=filename,
                                   remove_source=True)
         dot_ly_file_name = fill_template_png(answr_notes,
                                              global_options=answ_options,
                                              clef=clef_dict[voice])
         answr_png_no_lyrics_id = create_png(dot_ly_file_name,
+                                            png_name=filename + "_no_lyrics",
                                             remove_source=True)
 
         # …then, fill the note with both 'qustn' shard and the 'answr' shard…
