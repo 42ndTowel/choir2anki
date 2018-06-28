@@ -239,7 +239,7 @@ def calculate_new_partial(partial, time, cur_notes):
         # Compensating for the multiples workaround
         if partial.find('*') >= 0:
             partial, numerator = partial.split('*')
-            partial = abjad.Duration(partial)
+            partial = abjad.Duration(1, int(partial))
             partial *= int(numerator)
         else:
             partial = abjad.Duration.from_lilypond_duration_string(partial)
