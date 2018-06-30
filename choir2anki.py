@@ -293,24 +293,6 @@ def is_singable_syllable(lilypond_lyric_piece):
         return False
     return  True
 
-def get_lyric_slice(lilypond_lyrics, slice_start, slice_end):
-    '''Get the piece of lyrics that spans the given interval.'''
-    lilypond_lyrics = remove_lilypond_comments(lilypond_lyrics)
-    tokens = lilypond_lyrics.split()
-    lyric_slice = []
-
-    syllable_counter = 0
-    for t in tokens:
-        if syllable_counter == slice_end and not is_singable_syllable(t):
-            lyric_slice += [t] # Add trailing '__'
-        if slice_start <= syllable_counter and syllable_counter < slice_end:
-            lyric_slice += [t]
-        if is_singable_syllable(t):
-            syllable_counter += 1
-    lyric_slice = " ".join(lyric_slice)
-    lyric_slice = lyric_slice.lstrip("[_|-| ]") # if start is in middle of word
-    return lyric_slice
-
 def count_singable_lyrics(lilypond_lyrics):
     '''Given a piece of lyrics, count how many syllables are sung in it.'''
     lilypond_lyrics = remove_lilypond_comments(lilypond_lyrics)
@@ -361,20 +343,6 @@ def get_note_slice(lilypond_notes, slice_start, slice_end, open_parantheses=0):
     note_slice = " ".join(note_slice)
     return note_slice
 
-def count_singable_notes(lilypond_notes, open_parantheses=0):
-    '''Given a piece of music, count how many notes start in it.'''
-    lilypond_notes = remove_lilypond_comments(lilypond_notes)
-    tokens = lilypond_notes.split()
-
-    singable_notes = 0
-    next_is_tie = False
-    for t in tokens:
-        is_singable, next_is_tie, open_parantheses = \
-                            is_singable_note(t, next_is_tie, open_parantheses)
-        if is_singable:
-            singable_notes += 1
-    return singable_notes
-
 def create_absolute_notes(lilypond_notes, relative):
     '''Turn relative lilypond notes into absolute lilypond notes.'''
     # Apparently, Christian speaks dutch…
@@ -390,52 +358,6 @@ def create_absolute_notes(lilypond_notes, relative):
     normal_notes = " ".join(normal_notes)
     normal_notes = normal_notes.replace('%%%', '')
     return normal_notes
-
-def count_musical_tokens(lilypond_notes):
-    '''Count the amount of notes, rests, etc.'''
-    parser = abjad.lilypondparsertools\
-                  .LilyPondParser(default_language='nederlands')
-    return len(parser(r"\relative c {" + lilypond_notes + r"}"))
-
-
-def create_normal_note_shards(lilypond_notes, relative,
-                              split_symbol='%%'):
-    '''Turn relative lilypond notes into note shards based on annotation.'''
-
-    # To turn relative to absolute, we need entire context.
-    # Apparently, Christian speaks dutch…
-    parser = abjad.lilypondparsertools\
-                  .LilyPondParser(default_language='nederlands')
-    normal_notes = create_absolute_notes(lilypond_notes, relative)
-    normal_notes = normal_notes.split(" ")
-
-    # Since the abjad parser throws away comments (i.e. our annotation),
-    # we need the original notes to get the length of the shards
-    notes = lilypond_notes.split(split_symbol)
-    shard_lengths = [count_musical_tokens(n) for n in notes]
-
-    # Combine notes in normalized form and the desired lengths
-    note_shards = []
-    comment_starts = ['%%%', '\\']
-    for l in shard_lengths:
-        shard, normal_notes = normal_notes[:l], normal_notes[l:]
-        # The abjad parser turns some things (e.g. time changes) into comments.
-        # Those don't count towards shard length
-        cmnts_found = sum([x.startswith(y) for x in shard
-                                           for y in comment_starts])
-        cmnts_compensated = 0
-        while cmnts_found != cmnts_compensated:
-            shard_addition, normal_notes = (normal_notes[:cmnts_found],
-                                            normal_notes[cmnts_found:])
-            shard += shard_addition
-            cmnts_found = sum([x.startswith(y) for x in shard
-                                               for y in comment_starts])
-            cmnts_compensated += len(shard_addition)
-        note_shards += [" ".join(shard)]
-
-    # Lastly, remove comments
-    note_shards = [n.replace('%%%', '') for n in note_shards]
-    return note_shards
 
 def main(source_file_name):
     '''Run the thing.'''
