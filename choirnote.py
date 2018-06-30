@@ -40,6 +40,16 @@ png_template = r'''
 \end{document}
 '''
 
+def embed_picture(picture_location):
+  if picture_location == "":
+    return ""
+  return '<img src="{}">'.format(picture_location)
+
+def embed_mp3(mp3_location):
+  if mp3_location == "":
+    return ""
+  return '[sound:{}]'.format(mp3_location)
+
 class ChoirNote(genanki.Note):
     def choir_model():
         model_id = '1544216877' # random string, hardcoded
@@ -69,8 +79,8 @@ class ChoirNote(genanki.Note):
     Beginning of “{{songtitle}}”
 {{/is_first_part}}
 {{^is_first_part}}
-<img src="{{qustn_score}}">
-<span style="display:none">[sound:{{qustn_mp3}}]</span>
+{{qustn_score}}
+<span style="display:none">{{qustn_mp3}}</span>
 {{/is_first_part}}
 ''',
               'afmt': '''
@@ -81,11 +91,11 @@ class ChoirNote(genanki.Note):
     Beginning of “{{songtitle}}”
 {{/is_first_part}}
 {{^is_first_part}}
-<img src="{{qustn_score}}">
+{{qustn_score}}
 {{/is_first_part}}
 <hr id="answer">
-<img src="{{answr_score}}">
-<span style="display:none">[sound:{{answr_mp3}}]</span>
+{{answr_score}}
+<span style="display:none">{{answr_mp3}}</span>
 ''',
             },
             {
@@ -99,7 +109,7 @@ class ChoirNote(genanki.Note):
 {{/is_first_part}}
 {{^is_first_part}}
 {{qustn_lyrics}}
-<span style="display:none">[sound:{{qustn_mp3}}]</span>
+<span style="display:none">{{qustn_mp3}}</span>
 {{/is_first_part}}
 ''',
               'afmt': '''
@@ -114,7 +124,7 @@ class ChoirNote(genanki.Note):
 {{/is_first_part}}
 <hr id="answer">
 {{answr_lyrics}}
-<span style="display:none">[sound:{{answr_mp3}}]</span>
+<span style="display:none">{{answr_mp3}}</span>
 ''',
             },
         ]

@@ -5,7 +5,6 @@ Dependencies: abjad, lilypond, latex, timidity, lame, genanki,
 """
 
 tmp_folder = "OUTPUT__TMP"
-media_folder = "collection.media"
 
 import re
 import os
@@ -15,7 +14,7 @@ import uuid
 import genanki
 import abjad
 from string import Template
-from choirnote import ChoirNote, mp3_template, png_template
+from choirnote import * # Barely any namespace pollution, I promise
 
 def create_mp3(source_file_name, mp3_name=None, remove_source=False):
     """Generate an .mp3 and write it to disk.
@@ -462,6 +461,7 @@ def main(source_file_name):
     qustn_lyrics = ''
     qustn_mp3_id = ''
     num_seen_singable_lyrics = 0
+    feedback = 'Completed note {:003} of {:003}'
     for shard_num, answr_lyrics in enumerate(lyric_shards):
         # First up, generate the 'answr' shard, which will be the answer…
         answ_options = r"\key {} \time {} {}".format(key, time, options)
@@ -505,14 +505,14 @@ def main(source_file_name):
                                       songtitle,
                                       str(shard_num),
                                       is_first_part,
-                                      qustn_png_id,
-                                      qustn_png_no_lyrics_id,
+                                      embed_picture(qustn_png_id),
+                                      embed_picture(qustn_png_no_lyrics_id),
                                       create_normal_lyrics(qustn_lyrics),
-                                      qustn_mp3_id,
-                                      answr_png_id,
-                                      answr_png_no_lyrics_id,
+                                      embed_mp3(qustn_mp3_id),
+                                      embed_picture(answr_png_id),
+                                      embed_picture(answr_png_no_lyrics_id),
                                       create_normal_lyrics(answr_lyrics),
-                                      answr_mp3_id],
+                                      embed_mp3(answr_mp3_id)],
                               tags=tags)
         anki_deck.add_note(anki_note)
 
@@ -532,25 +532,18 @@ def main(source_file_name):
         is_first_part = ''
 
         # Give a little feedback
-        feedback = 'Completed note {:003} of {:003}'.format(shard_num + 1,
-                                                       len(lyric_shards))
-        print(feedback, end='\r')
+        print(feedback.format(shard_num + 1, len(lyric_shards)), end='\r')
 
-    # Store away all our precious media
-    if not os.path.isdir(media_folder):
-        os.makedirs(media_folder)
-    for file in anki_media:
-        os.replace(file, media_folder + "/" + file)
-
-    # And export the deck
+    # Export the deck
     anki_package = genanki.Package(anki_deck, media_files=anki_media)
-    anki_package.media_files = [media_folder + "/" + f for f in anki_media]
     anki_package.write_to_file(songtitle + '.apkg')
+    for file in anki_media: # All files are now inside the apkg
+        os.remove(file)
     print('\n========\nSuccessfully generated ' + songtitle + '.apkg\n========')
 
 if __name__ == "__main__":
     source_file_name = 'big_bang_theory_theme.ly'
-    source_file_name = 'cosmic_gall.ly'
+    #source_file_name = 'cosmic_gall.ly'
     #source_file_name = 'meet_the_elements.ly'
     #source_file_name = 'schoepfung_metamorphosen.ly'
 
