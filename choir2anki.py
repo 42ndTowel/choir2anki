@@ -319,29 +319,36 @@ def is_singable_note(lilypond_note, next_is_tie, open_parantheses):
         open_parantheses += 1
     return is_singable, next_is_tie, open_parantheses
 
-def get_note_slice(lilypond_notes, slice_start, slice_end, open_parantheses=0):
-    '''Get the stretch of notes thet spans the given interval.'''
+def get_note_shards(lilypond_notes, lyric_shard_lengths):
+    '''Get the note shards corresponding to the given lyric shards.
+
+    All entries in lyric_shard_lengths must be strictly positive integers.
+    '''
     lilypond_notes = remove_lilypond_comments(lilypond_notes)
     tokens = lilypond_notes.split()
-    note_slice = []
 
-    singable_notes = 0
+    for x in lyric_shard_lengths:
+        assert(x > 0)
+    note_shards = []
+    current_shard = []
+    open_parantheses = 0
     next_is_tie = False
+    singable_notes = 0
     for t in tokens:
         is_singable, next_is_tie, open_parantheses = \
                             is_singable_note(t, next_is_tie, open_parantheses)
-        # TODO Incorporate intelligence -- Maximize simplicity of partials when
-        # adding rests, thus making the resulting notes more natural
-        if singable_notes == slice_end and not is_singable:
-            note_slice += [t] # Add trailing rests, glissando, ties, …
-        if slice_start == singable_notes and is_singable:
-            note_slice += [t] # Don't add non-singable stuff before first note
-        if slice_start < singable_notes and singable_notes < slice_end:
-            note_slice += [t]
+        if singable_notes >= lyric_shard_lengths[0] and is_singable:
+            singable_notes = 0
+            note_shards += [current_shard]
+            current_shard = []
+            lyric_shard_lengths = lyric_shard_lengths[1:]
+        current_shard += [t]
         if is_singable:
             singable_notes += 1
-    note_slice = " ".join(note_slice)
-    return note_slice
+    if current_shard != []:
+        note_shards += [current_shard]
+    note_shards = [" ".join(shard) for shard in note_shards]
+    return note_shards
 
 def create_absolute_notes(lilypond_notes, relative):
     '''Turn relative lilypond notes into absolute lilypond notes.'''
@@ -373,6 +380,10 @@ def main(source_file_name):
     key, time, partial, options = extract_key_time_partial(global_options)
     notes = create_absolute_notes(notes, relative)
     lyric_shards = re.split("(?<!%)%{(?:.|\s)*?%}", lyrics)
+    lyric_shard_lengths = [count_singable_lyrics(x) for x in lyric_shards]
+    print("Generating note shards…", end='\r')
+    note_shards = get_note_shards(notes, lyric_shard_lengths)
+    print("Generating first note… ", end='\r')
 
     anki_deck = genanki.Deck(1452737122, 'Physikerchor') # random but hardcoded
     anki_media = []
@@ -382,20 +393,13 @@ def main(source_file_name):
     qustn_png_no_lyrics_id = ''
     qustn_lyrics = ''
     qustn_mp3_id = ''
-    num_seen_singable_lyrics = 0
     feedback = 'Completed note {:003} of {:003}'
     for shard_num, answr_lyrics in enumerate(lyric_shards):
         # First up, generate the 'answr' shard, which will be the answer…
+        answr_notes = note_shards[shard_num]
         answ_options = r"\key {} \time {} {}".format(key, time, options)
         if partial:
             answ_options += r" \partial {}".format(partial)
-
-        # Select the relevant part of notes based on the amount of lyrics that
-        # are actually singable (e.g. no rests, no portamento)
-        num_note_relevant_lyrics = count_singable_lyrics(answr_lyrics)
-        answr_notes = get_note_slice(notes, num_seen_singable_lyrics,
-                         num_seen_singable_lyrics + num_note_relevant_lyrics)
-        num_seen_singable_lyrics += num_note_relevant_lyrics
 
         filename = songtitle.replace(' ', '_').lower()
         filename += "_{:003n}".format(shard_num)
