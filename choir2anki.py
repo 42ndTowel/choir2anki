@@ -23,7 +23,7 @@ def create_mp3(source_file_name, mp3_name=None, remove_source=False):
     current directory and return the file name of the .mp3. In both cases, the
     trailing '.ly' and '.mp3' are omitted except in the return value.
     If no file name for the .mp3 is provided, a uuid is assigned.
-    
+
     source_file_name -- the location of the .ly file, without file ending
     mp3_name -- the file name of the .mp3 (default: random uuid4)
     remove_source -- remove the lilypond after .mp3 is created (default: false)
@@ -64,7 +64,7 @@ def create_png(source_file_name, png_name=None, tmp_folder=tmp_folder,
     return the filename of the created .png.
     The trailing '.ly' and '.png' are omitted except in the return value.
     If no file name for the .png is provided, a uuid is assigned.
-    
+
     source_file_name -- the location of the .ly file, without file ending
     png_name -- the file name of the .png (default: random uuid4)
     tmp_folder -- a folder for intermediary files (default: "OUTPUT__TMP")
@@ -212,6 +212,29 @@ def extract_key_time_partial(options):
     options = options.strip()
     return key, time, partial, options
 
+def encode_partial(abjad_duration):
+    if abjad_duration == None:
+        return None
+    try:
+        partial = abjad_duration.lilypond_duration_string
+    except abjad.AssignabilityError: # lilypond understands multiples
+        numerator = abjad_duration.numerator
+        abjad_duration /= numerator
+        partial = abjad_duration.lilypond_duration_string + '*' + str(numerator)
+    return partial
+
+def decode_partial(partial):
+    if partial == None or partial == "":
+        return abjad.Duration()
+    # Compensating for the multiples workaround
+    if partial.find('*') >= 0:
+        partial, numerator = partial.split('*')
+        partial = abjad.Duration(1, int(partial))
+        partial *= int(numerator)
+    else:
+        partial = abjad.Duration.from_lilypond_duration_string(partial)
+    return partial
+
 def calculate_new_partial(partial, time, cur_notes):
     '''Calculate how much of the last measurement is left incompleted.'''
     parser = abjad.lilypondparsertools.LilyPondParser()
@@ -235,13 +258,7 @@ def calculate_new_partial(partial, time, cur_notes):
     abj_notes = parser(r'\new Voice { ' + cur_notes + r'}')
     notes_duration = abjad.inspect(abj_notes).get_duration()
     if partial:
-        # Compensating for the multiples workaround
-        if partial.find('*') >= 0:
-            partial, numerator = partial.split('*')
-            partial = abjad.Duration(1, int(partial))
-            partial *= int(numerator)
-        else:
-            partial = abjad.Duration.from_lilypond_duration_string(partial)
+        partial = decode_partial(partial)
     time = abjad.Duration(time)
 
     if partial:
@@ -252,13 +269,78 @@ def calculate_new_partial(partial, time, cur_notes):
     if partial >= time:
         partial = None
     else:
-        try:
-            partial = partial.lilypond_duration_string
-        except abjad.AssignabilityError: # lilypond understands multiples
-            numerator = partial.numerator
-            partial /= numerator
-            partial = partial.lilypond_duration_string + '*' + str(numerator)
+        partial = encode_partial(partial)
     return partial
+
+def find_best_split(partial, time, left_note_shard, right_note_shard):
+    '''Given two note shards, find the most natural splitting point.
+
+    Rests are only expected on the end of the left shard, never at the
+    beginning of the right shard.
+    '''
+    def contains_singable_note(lilypond_note_array, open_paranthesis):
+        next_is_tie = False
+        open_parantheses = 0
+        for note in lilypond_note_array:
+            is_singable, next_is_tie, open_parantheses =\
+                is_singable_note(note, next_is_tie, open_parantheses)
+            if is_singable:
+                return True
+        return False
+
+    def partial_metric(abjad_duration):
+        if abjad_duration == None:
+            return 0
+        return abjad_duration.numerator + abjad_duration.denominator - 1
+
+    best_partial = calculate_new_partial(partial, time, left_note_shard)
+    best_partial = decode_partial(best_partial)
+    left_note_shard = left_note_shard.split()
+    right_note_shard = right_note_shard.split()
+
+    splitpoint = 0
+    contains_singable = True
+    while contains_singable and splitpoint <= len(left_note_shard):
+        left_split, right_split = (left_note_shard[:splitpoint],
+                                   left_note_shard[splitpoint:])
+        # can't split in the middle of a slur
+        open_paranthesis = "".join(left_split).count('(')
+        open_paranthesis -= "".join(left_split).count(')')
+        open_paranthesis += "".join(right_split).count('(') # don' move slurs!
+        if right_split != []:
+            starts_with_tie = right_split[0].endswith('~')
+        if open_paranthesis == 0 and not starts_with_tie:
+            contains_singable = contains_singable_note(right_split,
+                                                       open_paranthesis)
+        splitpoint += 1
+    left_note_shard = left_split
+    movable_tokens = right_split
+
+    splitpoint = 0
+    best_splitpoint = 0
+    while splitpoint <= len(movable_tokens):
+        left_candidate = left_note_shard + movable_tokens[:splitpoint]
+        right_candidate = movable_tokens[splitpoint:] + right_note_shard
+        open_paranthesis = "".join(left_candidate).count('(')
+        open_paranthesis -= "".join(left_candidate).count(')')
+        ends_in_tie = left_candidate[-1].endswith('~')
+        if open_paranthesis == 0 and not ends_in_tie:
+            candidate_partial = calculate_new_partial(partial,
+                                                      time,
+                                                      " ".join(left_candidate))
+            if candidate_partial != None:
+                candidate_partial = decode_partial(candidate_partial)
+            if partial_metric(candidate_partial) <= partial_metric(best_partial):
+                best_partial = candidate_partial
+                best_splitpoint = splitpoint
+        splitpoint += 1
+
+    left_note_shard = left_note_shard + movable_tokens[:best_splitpoint]
+    right_note_shard = movable_tokens[best_splitpoint:] + right_note_shard
+    left_note_shard = " ".join(left_note_shard)
+    right_note_shard = " ".join(right_note_shard)
+    new_left_partial = calculate_new_partial(partial, time, left_note_shard)
+    return left_note_shard, right_note_shard, new_left_partial
 
 def remove_lilypond_comments(string):
     '''Remove all comments from a given string'''
@@ -363,6 +445,10 @@ def create_absolute_notes(lilypond_notes, relative):
     normal_notes = normal_notes.split('\n')
     normal_notes = [n.strip() for n in normal_notes][1:-1] # '{' and '}'
     normal_notes = " ".join(normal_notes)
+    for match in re.findall(r"(R.)( ?\* ?)([0-9]+)", normal_notes):
+        to_replace = match[0] + match[1] + match[2]
+        replace_with = " ".join([match[0]]*int(match[2]))
+        normal_notes = normal_notes.replace(to_replace, replace_with)
     normal_notes = normal_notes.replace('%%%', '')
     return normal_notes
 
@@ -381,10 +467,20 @@ def main(source_file_name):
     notes = create_absolute_notes(notes, relative)
     lyric_shards = re.split("(?<!%)%{(?:.|\s)*?%}", lyrics)
     lyric_shard_lengths = [count_singable_lyrics(x) for x in lyric_shards]
-    print("Generating note shards…", end='\r')
+    print("Generating note shards...", end='\r')
     note_shards = get_note_shards(notes, lyric_shard_lengths)
-    print("Generating first note… ", end='\r')
 
+    print("Looking for best splits...", end='\r')
+    tmp_partial = partial
+    for i in range(1, len(note_shards)):
+        (note_shards[i-1],
+            note_shards[i],
+            tmp_partial) = find_best_split(tmp_partial,
+                                           time,
+                                           note_shards[i-1],
+                                           note_shards[i])
+
+    print("Starting note generation...", end='\r')
     anki_deck = genanki.Deck(1452737122, 'Physikerchor') # random but hardcoded
     anki_media = []
 
@@ -393,7 +489,7 @@ def main(source_file_name):
     qustn_png_no_lyrics_id = ''
     qustn_lyrics = ''
     qustn_mp3_id = ''
-    feedback = 'Completed note {:003} of {:003}'
+    feedback = 'Completed note {:003} of {:003}...'
     for shard_num, answr_lyrics in enumerate(lyric_shards):
         # First up, generate the 'answr' shard, which will be the answer…
         answr_notes = note_shards[shard_num]
@@ -465,12 +561,12 @@ def main(source_file_name):
     anki_package.write_to_file(songtitle + '.apkg')
     for file in anki_media: # All files are now inside the apkg
         os.remove(file)
-    print('\n========\nSuccessfully generated ' + songtitle + '.apkg\n========')
+    print('Successfully generated ' + songtitle + '.apkg')
 
 if __name__ == "__main__":
     source_file_name = 'big_bang_theory_theme.ly'
-    #source_file_name = 'cosmic_gall.ly'
-    #source_file_name = 'meet_the_elements.ly'
-    #source_file_name = 'schoepfung_metamorphosen.ly'
+    # source_file_name = 'cosmic_gall.ly'
+    # source_file_name = 'meet_the_elements.ly'
+    # source_file_name = 'schoepfung_metamorphosen.ly'
 
     main(source_file_name)
