@@ -30,12 +30,14 @@ png_template = r'''
       \absolute {
         ${notes}
       }
-      }
-      \new Lyrics \lyricsto "b" \lyricmode {
+    }
+    \new Lyrics \lyricsto "b" <<
+      \lyricmode {
         ${lyrics}
       }
     >>
-    \layout{}
+  >>
+\layout{}
 \end{lilypond}
 \end{document}
 '''
