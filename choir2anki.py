@@ -13,6 +13,7 @@ import subprocess
 import uuid
 import genanki
 import abjad
+import argparse
 from string import Template
 from choirnote import * # Barely any namespace pollution, I promise
 
@@ -564,9 +565,7 @@ def main(source_file_name):
     print('Successfully generated ' + songtitle + '.apkg')
 
 if __name__ == "__main__":
-    source_file_name = 'big_bang_theory_theme.ly'
-    # source_file_name = 'cosmic_gall.ly'
-    # source_file_name = 'meet_the_elements.ly'
-    # source_file_name = 'schoepfung_metamorphosen.ly'
-
-    main(source_file_name)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("filename", help="filename of the lilypond file to parse")
+    args = parser.parse_args()
+    main(args.filename)

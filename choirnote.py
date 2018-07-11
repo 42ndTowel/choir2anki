@@ -75,7 +75,7 @@ class ChoirNote(genanki.Note):
               'name': 'with_score',
               'qfmt': '''
 <span style="color:aqua; font-size:24px">
-    Keep singing
+    keep singing
 </span><br /><br />
 {{#is_first_part}}
     Beginning of “{{songtitle}}”
@@ -87,7 +87,7 @@ class ChoirNote(genanki.Note):
 ''',
               'afmt': '''
 <span style="color:aqua; font-size:24px">
-    Keep singing
+    keep singing
 </span><br /><br />
 {{#is_first_part}}
     Beginning of “{{songtitle}}”
@@ -104,7 +104,7 @@ class ChoirNote(genanki.Note):
               'name': 'without_score',
               'qfmt': '''
 <span style="color:aqua; font-size:24px">
-    Keep singing
+    keep singing
 </span><br /><br />
 {{#is_first_part}}
     Beginning of “{{songtitle}}”
@@ -116,7 +116,7 @@ class ChoirNote(genanki.Note):
 ''',
               'afmt': '''
 <span style="color:aqua; font-size:24px">
-    Keep singing
+    keep singing
 </span><br /><br />
 {{#is_first_part}}
     Beginning of “{{songtitle}}”
