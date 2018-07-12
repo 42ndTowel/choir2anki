@@ -435,6 +435,8 @@ def get_note_shards(lilypond_notes, lyric_shard_lengths):
 
 def create_absolute_notes(lilypond_notes, relative):
     '''Turn relative lilypond notes into absolute lilypond notes.'''
+    if relative == "":
+        raise ValueError("relative needs to be set")
     # Apparently, Christian speaks dutch…
     lilypond_notes = remove_lilypond_comments(lilypond_notes)
     parser = abjad.lilypondparsertools\
@@ -566,6 +568,6 @@ def main(source_file_name):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("filename", help="filename of the lilypond file to parse")
+    parser.add_argument("filename", help="lilypond file to parse")
     args = parser.parse_args()
     main(args.filename)
