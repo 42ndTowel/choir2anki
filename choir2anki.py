@@ -322,6 +322,9 @@ def find_best_split(partial, time, left_note_shard, right_note_shard):
     while splitpoint <= len(movable_tokens):
         left_candidate = left_note_shard + movable_tokens[:splitpoint]
         right_candidate = movable_tokens[splitpoint:] + right_note_shard
+        if left_candidate[-1].endswith("\\key"): # '\key e \major' -> += 2
+            splitpoint += 2
+            continue
         open_paranthesis = "".join(left_candidate).count('(')
         open_paranthesis -= "".join(left_candidate).count(')')
         ends_in_tie = left_candidate[-1].endswith('~')
@@ -400,6 +403,8 @@ def is_singable_note(lilypond_note, next_is_tie, open_parantheses):
         open_parantheses -= 1
     if lilypond_note.endswith('('):
         open_parantheses += 1
+    if lilypond_note.endswith('\\key'):
+        next_is_tie = True
     return is_singable, next_is_tie, open_parantheses
 
 def get_note_shards(lilypond_notes, lyric_shard_lengths):
