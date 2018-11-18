@@ -244,9 +244,9 @@ def calculate_new_partial(partial, time, cur_notes):
     if cur_notes.find('\\time') >= 0:
         partial = None
         time_before = time_now = None
-        for time_now in re.finditer('\\\\time ([0-9]*/[0-9]*)', cur_notes):
+        for time_new in re.finditer('\\\\time ([0-9]*/[0-9]*)', cur_notes):
             time_before = time_now
-            time_now = time_now[1]
+            time_now = time_new[1]
         split_notes = cur_notes.split('\\time ' + time_now)
         # If the \time change was last command, no notes after, pick time_before
         time = time_now
@@ -322,6 +322,9 @@ def find_best_split(partial, time, left_note_shard, right_note_shard):
     while splitpoint <= len(movable_tokens):
         left_candidate = left_note_shard + movable_tokens[:splitpoint]
         right_candidate = movable_tokens[splitpoint:] + right_note_shard
+        if left_candidate[-1].endswith("\\time"): # '\time 12/8' -> += 2
+            splitpoint += 2
+            continue
         if left_candidate[-1].endswith("\\key"): # '\key e \major' -> += 2
             splitpoint += 2
             continue
